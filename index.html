@@ -1,12 +1,10 @@
-
 <!DOCTYPE html>
 <html>
 <head>
   <title>GPS Tekenen op Kaart</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     body, html { margin: 0; padding: 0; height: 100%; }
     #map { height: 80vh; width: 100%; }
@@ -22,6 +20,7 @@
     <button id="start">Start Tekenen</button>
     <button id="stop" disabled>Stop Tekenen</button>
     <button id="showResult" disabled>Toon Coördinaten</button>
+    <button id="eraseLast" disabled>Gum Laatste Lijn</button>
     <button id="toggleEraseMode">Gum-Modus: UIT</button>
     <button id="locateMe">Toon Mijn Locatie</button>
     <button id="downloadImage">Download Afbeelding</button>
@@ -39,8 +38,9 @@
   </div>
   <div id="output"></div>
 
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([52.3676, 4.9041], 13);
+    const map = L.map('map').setView([52.3676, 4.9041], 13); // Amsterdam
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -56,6 +56,7 @@
     const startBtn = document.getElementById('start');
     const stopBtn = document.getElementById('stop');
     const showBtn = document.getElementById('showResult');
+    const eraseBtn = document.getElementById('eraseLast');
     const toggleEraseBtn = document.getElementById('toggleEraseMode');
     const downloadImageBtn = document.getElementById('downloadImage');
     const locateMeBtn = document.getElementById('locateMe');
@@ -66,6 +67,7 @@
       if (watchId !== null && !eraseMode) {
         currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
         polylines.push(currentPolyline);
+        eraseBtn.disabled = false;
       }
     }
 
@@ -78,12 +80,15 @@
       if (navigator.geolocation) {
         polylines = [];
         output.textContent = '';
+
         currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
         polylines.push(currentPolyline);
+        eraseBtn.disabled = false;
 
         watchId = navigator.geolocation.watchPosition(pos => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
+
           const currentPos = L.latLng(lat, lng);
 
           if (eraseMode) {
@@ -128,16 +133,24 @@
         output.textContent = 'Geen coördinaten geregistreerd.';
         return;
       }
-      output.textContent = 'Coördinaten:
-' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
+      output.textContent = 'Coördinaten:\n' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
+    };
+
+    eraseBtn.onclick = () => {
+      if (polylines.length > 0) {
+        const lastPolyline = polylines.pop();
+        map.removeLayer(lastPolyline);
+        currentPolyline = null;
+        if (polylines.length === 0) {
+          eraseBtn.disabled = true;
+        } else {
+          currentPolyline = polylines[polylines.length - 1];
+        }
+      }
     };
 
     downloadImageBtn.onclick = () => {
-      leafletImage(map, function(err, canvas) {
-        if (err) {
-          alert("Er ging iets mis bij het genereren van de afbeelding.");
-          return;
-        }
+      html2canvas(document.getElementById('map')).then(canvas => {
         const link = document.createElement('a');
         link.download = 'tekening-kaart.png';
         link.href = canvas.toDataURL();
