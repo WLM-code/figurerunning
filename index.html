@@ -25,7 +25,6 @@
     <button id="toggleEraseMode">Gum-Modus: UIT</button>
     <button id="locateMe">Toon Mijn Locatie</button>
     <button id="downloadImage">Download Afbeelding</button>
-    <button id="shareImage">Deel Afbeelding</button>
     <div style="margin-top: 10px;">
       <button class="color-button" style="background-color: red; color: white;" onclick="setColor('red')">Felrood</button>
       <button class="color-button" style="background-color: deeppink; color: white;" onclick="setColor('deeppink')">Felroze</button>
@@ -146,34 +145,7 @@
       });
     };
 
-    
-document.getElementById('shareImage').onclick = () => {
-  leafletImage(map, function(err, canvas) {
-    if (err) {
-      alert("Er ging iets mis bij het genereren van de afbeelding.");
-      return;
-    }
-
-    canvas.toBlob(blob => {
-      const url = URL.createObjectURL(blob);
-
-      // Open e-mail met instructies
-      const subject = encodeURIComponent("Mijn GPS-tekening");
-      const body = encodeURIComponent(
-        "Hoi!\n\nHier is mijn GPS-tekening. Je kunt de afbeelding handmatig toevoegen vanuit je downloads.\n\nGroetjes!"
-      );
-      window.open(`mailto:?subject=${subject}&body=${body}`);
-
-      // Download de afbeelding
-      const link = document.createElement('a');
-      link.download = 'tekening-kaart.png';
-      link.href = url;
-      link.click();
-    });
-  });
-};
-
-locateMeBtn.onclick = () => {
+    locateMeBtn.onclick = () => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(pos => {
           const lat = pos.coords.latitude;
