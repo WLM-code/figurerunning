@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GPS Tekenen op Kaart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; }
+    #map { height: 80vh; width: 100%; }
+    #controls { padding: 10px; text-align: center; }
+    #output { padding: 10px; text-align: center; word-break: break-word; font-family: monospace; }
+    button { padding: 10px 20px; font-size: 16px; margin: 5px; }
+    .color-button { border: 2px solid #ccc; border-radius: 5px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="controls">
+    <button id="start">Start Tekenen</button>
+    <button id="stop" disabled>Stop Tekenen</button>
+    <button id="showResult" disabled>Toon Coördinaten</button>
+    <button id="eraseLast" disabled>Gum Laatste Lijn</button>
+    <button id="toggleEraseMode">Gum-Modus: UIT</button>
+    <button id="locateMe">Toon Mijn Locatie</button>
+    <button id="downloadImage">Download Afbeelding</button>
+    <div style="margin-top: 10px;">
+      <button class="color-button" style="background-color: red; color: white;" onclick="setColor('red')">Felrood</button>
+      <button class="color-button" style="background-color: deeppink; color: white;" onclick="setColor('deeppink')">Felroze</button>
+      <button class="color-button" style="background-color: indigo; color: white;" onclick="setColor('indigo')">Dieppaars</button>
+      <button class="color-button" style="background-color: cyan; color: black;" onclick="setColor('cyan')">Cyaanblauw</button>
+      <button class="color-button" style="background-color: yellow; color: black;" onclick="setColor('yellow')">Felgeel</button>
+      <button class="color-button" style="background-color: black; color: white;" onclick="setColor('black')">Zwart</button>
+      <button class="color-button" style="background-color: white; color: black;" onclick="setColor('white')">Wit</button>
+      <button class="color-button" style="background-color: lime; color: black;" onclick="setColor('lime')">Limoengroen</button>
+      <button class="color-button" style="background-color: orchid; color: black;" onclick="setColor('orchid')">Orchideepaars</button>
+    </div>
+  </div>
+  <div id="output"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([52.3676, 4.9041], 13); // Amsterdam
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let polylines = [];
+    let currentPolyline = null;
+    let watchId = null;
+    let currentColor = 'red';
+    let eraseMode = false;
+    let lastPos = null;
+    let locationMarker = null;
+
+    const startBtn = document.getElementById('start');
+    const stopBtn = document.getElementById('stop');
+    const showBtn = document.getElementById('showResult');
+    const eraseBtn = document.getElementById('eraseLast');
+    const toggleEraseBtn = document.getElementById('toggleEraseMode');
+    const downloadImageBtn = document.getElementById('downloadImage');
+    const locateMeBtn = document.getElementById('locateMe');
+    const output = document.getElementById('output');
+
+    function setColor(color) {
+      currentColor = color;
+      if (watchId !== null && !eraseMode) {
+        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
+        polylines.push(currentPolyline);
+        eraseBtn.disabled = false;
+      }
+    }
+
+    toggleEraseBtn.onclick = () => {
+      eraseMode = !eraseMode;
+      toggleEraseBtn.textContent = 'Gum-Modus: ' + (eraseMode ? 'AAN' : 'UIT');
+    };
+
+    startBtn.onclick = () => {
+      if (navigator.geolocation) {
+        polylines = [];
+        output.textContent = '';
+
+        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
+        polylines.push(currentPolyline);
+        eraseBtn.disabled = false;
+
+        watchId = navigator.geolocation.watchPosition(pos => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+
+          const currentPos = L.latLng(lat, lng);
+
+          if (eraseMode) {
+            for (let i = polylines.length - 1; i >= 0; i--) {
+              let latlngs = polylines[i].getLatLngs();
+              latlngs = latlngs.filter(p => currentPos.distanceTo(p) > 5);
+              polylines[i].setLatLngs(latlngs);
+            }
+          } else {
+            currentPolyline.addLatLng(currentPos);
+          }
+
+          map.setView(currentPos);
+          lastPos = currentPos;
+        }, err => {
+          alert('Fout bij ophalen locatie: ' + err.message);
+        }, {
+          enableHighAccuracy: true
+        });
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        showBtn.disabled = true;
+      } else {
+        alert('Geolocatie wordt niet ondersteund in deze browser.');
+      }
+    };
+
+    stopBtn.onclick = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      showBtn.disabled = false;
+    };
+
+    showBtn.onclick = () => {
+      let allCoords = polylines.flatMap(p => p.getLatLngs());
+      if (allCoords.length === 0) {
+        output.textContent = 'Geen coördinaten geregistreerd.';
+        return;
+      }
+      output.textContent = 'Coördinaten:\n' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
+    };
+
+    eraseBtn.onclick = () => {
+      if (polylines.length > 0) {
+        const lastPolyline = polylines.pop();
+        map.removeLayer(lastPolyline);
+        currentPolyline = null;
+        if (polylines.length === 0) {
+          eraseBtn.disabled = true;
+        } else {
+          currentPolyline = polylines[polylines.length - 1];
+        }
+      }
+    };
+
+    downloadImageBtn.onclick = () => {
+      html2canvas(document.getElementById('map')).then(canvas => {
+        const link = document.createElement('a');
+        link.download = 'tekening-kaart.png';
+        link.href = canvas.toDataURL();
+        link.click();
+      });
+    };
+
+    locateMeBtn.onclick = () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const currentPos = L.latLng(lat, lng);
+          map.setView(currentPos, 16);
+
+          if (locationMarker) {
+            locationMarker.setLatLng(currentPos);
+          } else {
+            locationMarker = L.marker(currentPos).addTo(map).bindPopup("Je bent hier").openPopup();
+          }
+
+        }, err => {
+          alert('Locatie niet beschikbaar: ' + err.message);
+        });
+      } else {
+        alert('Geolocatie wordt niet ondersteund in deze browser.');
+      }
+    };
+  </script>
+</body>
+</html>
