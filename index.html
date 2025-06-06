@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -74,9 +75,118 @@
   <div id="output"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
   <script>
-    // JS-code ingekort voor leesbaarheid, deze is identiek aan de versie in canvas
+    const map = L.map('map').setView([52.3676, 4.9041], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let polylines = [];
+    let currentPolyline = null;
+    let watchId = null;
+    let currentColor = 'red';
+    let eraseMode = false;
+
+    const gpsStatus = document.getElementById('gps-status');
+    const startBtn = document.getElementById('start');
+    const stopBtn = document.getElementById('stop');
+    const showBtn = document.getElementById('showResult');
+    const eraseBtn = document.getElementById('eraseLast');
+    const toggleEraseBtn = document.getElementById('toggleEraseMode');
+    const downloadImageBtn = document.getElementById('downloadImage');
+    const output = document.getElementById('output');
+
+    function setColor(color) {
+      currentColor = color;
+      if (watchId !== null && !eraseMode) {
+        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
+        polylines.push(currentPolyline);
+        eraseBtn.disabled = false;
+      }
+    }
+
+    toggleEraseBtn.onclick = () => {
+      eraseMode = !eraseMode;
+      toggleEraseBtn.textContent = '✏️ Gum-Modus: ' + (eraseMode ? 'AAN' : 'UIT');
+    };
+
+    startBtn.onclick = () => {
+      if (navigator.geolocation) {
+        polylines = [];
+        output.textContent = '';
+        gpsStatus.textContent = 'GPS status: ⏳ Bezig met zoeken...';
+
+        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
+        polylines.push(currentPolyline);
+        eraseBtn.disabled = false;
+
+        watchId = navigator.geolocation.watchPosition(pos => {
+          const currentPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+
+          if (eraseMode) {
+            for (let polyline of polylines) {
+              let latlngs = polyline.getLatLngs().filter(p => currentPos.distanceTo(p) > 5);
+              polyline.setLatLngs(latlngs);
+            }
+          } else {
+            currentPolyline.addLatLng(currentPos);
+          }
+
+          map.setView(currentPos, map.getZoom());
+          gpsStatus.textContent = 'GPS status: 📍 Actief';
+        }, err => {
+          gpsStatus.textContent = 'GPS status: ❌ Fout: ' + err.message;
+          alert('Fout bij ophalen locatie: ' + err.message);
+        }, {
+          enableHighAccuracy: true
+        });
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        showBtn.disabled = true;
+      } else {
+        alert('Geolocatie wordt niet ondersteund in deze browser.');
+      }
+    };
+
+    stopBtn.onclick = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      showBtn.disabled = false;
+      gpsStatus.textContent = 'GPS status: ⏹ Gestopt';
+    };
+
+    showBtn.onclick = () => {
+      let allCoords = polylines.flatMap(p => p.getLatLngs());
+      if (allCoords.length === 0) {
+        output.textContent = 'Geen coördinaten geregistreerd.';
+        return;
+      }
+      output.textContent = 'Coördinaten:\n' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
+    };
+
+    eraseBtn.onclick = () => {
+      if (polylines.length > 0) {
+        const lastPolyline = polylines.pop();
+        map.removeLayer(lastPolyline);
+        currentPolyline = polylines[polylines.length - 1] || null;
+        eraseBtn.disabled = polylines.length === 0;
+      }
+    };
+
+    downloadImageBtn.onclick = () => {
+      leafletImage(map, function(err, canvas) {
+        const link = document.createElement('a');
+        link.download = 'tekening-kaart.png';
+        link.href = canvas.toDataURL();
+        link.click();
+      });
+    };
   </script>
 </body>
 </html>
