@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GPS Tekenen op Kaart (Fix v2)</title>
+  <title>GPS Tekenen op Kaart (Kleurfix Definitief)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -65,6 +65,7 @@
       function setColor(color) {
         currentColor = color;
         if (watchId !== null && !eraseMode) {
+          // Nieuwe lijn starten met nieuwe kleur
           currentPolyline = L.polyline([], { color: currentColor }).addTo(drawingLayer);
         }
       }
