@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GPS Tekenen op Kaart (Fix versie)</title>
+  <title>GPS Tekenen op Kaart (Fix v2)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -46,7 +46,7 @@
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(map);
 
-      let polylines = [];
+      const drawingLayer = L.layerGroup().addTo(map);
       let currentPolyline = null;
       let watchId = null;
       let currentColor = 'red';
@@ -65,10 +65,7 @@
       function setColor(color) {
         currentColor = color;
         if (watchId !== null && !eraseMode) {
-          currentPolyline = L.polyline([], { color: currentColor });
-          currentPolyline.addTo(map);
-          map.addLayer(currentPolyline);
-          polylines.push(currentPolyline);
+          currentPolyline = L.polyline([], { color: currentColor }).addTo(drawingLayer);
         }
       }
 
@@ -79,12 +76,8 @@
 
       startBtn.onclick = () => {
         if (navigator.geolocation) {
-          polylines = [];
           output.textContent = '';
-          currentPolyline = L.polyline([], { color: currentColor });
-          currentPolyline.addTo(map);
-          map.addLayer(currentPolyline);
-          polylines.push(currentPolyline);
+          currentPolyline = L.polyline([], { color: currentColor }).addTo(drawingLayer);
 
           watchId = navigator.geolocation.watchPosition(pos => {
             const lat = pos.coords.latitude;
@@ -92,11 +85,12 @@
             const currentPos = L.latLng(lat, lng);
 
             if (eraseMode) {
-              for (let i = polylines.length - 1; i >= 0; i--) {
-                let latlngs = polylines[i].getLatLngs();
-                latlngs = latlngs.filter(p => currentPos.distanceTo(p) > 5);
-                polylines[i].setLatLngs(latlngs);
-              }
+              drawingLayer.eachLayer(layer => {
+                if (layer instanceof L.Polyline) {
+                  let latlngs = layer.getLatLngs().filter(p => currentPos.distanceTo(p) > 5);
+                  layer.setLatLngs(latlngs);
+                }
+              });
             } else {
               currentPolyline.addLatLng(currentPos);
             }
@@ -129,7 +123,12 @@
       };
 
       showBtn.onclick = () => {
-        let allCoords = polylines.flatMap(p => p.getLatLngs());
+        let allCoords = [];
+        drawingLayer.eachLayer(layer => {
+          if (layer instanceof L.Polyline) {
+            allCoords.push(...layer.getLatLngs());
+          }
+        });
         if (allCoords.length === 0) {
           output.textContent = 'Geen coördinaten geregistreerd.';
           return;
