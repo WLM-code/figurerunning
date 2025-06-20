@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GPS Tekenen op Kaart (Kleurfix Definitief)</title>
+  <title>GPS Tekenen op Kaart (Kleurcorrectie Final)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -65,7 +65,7 @@
       function setColor(color) {
         currentColor = color;
         if (watchId !== null && !eraseMode) {
-          // Nieuwe lijn starten met nieuwe kleur
+          // Nieuwe lijn starten voor nieuwe kleur
           currentPolyline = L.polyline([], { color: currentColor }).addTo(drawingLayer);
         }
       }
@@ -93,6 +93,10 @@
                 }
               });
             } else {
+              // Als currentPolyline niet bestaat (bijvoorbeeld na kleurwissel), maak een nieuwe
+              if (!currentPolyline) {
+                currentPolyline = L.polyline([], { color: currentColor }).addTo(drawingLayer);
+              }
               currentPolyline.addLatLng(currentPos);
             }
 
@@ -118,6 +122,7 @@
           navigator.geolocation.clearWatch(watchId);
           watchId = null;
         }
+        currentPolyline = null;
         startBtn.disabled = false;
         stopBtn.disabled = true;
         showBtn.disabled = false;
