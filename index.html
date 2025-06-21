@@ -1,31 +1,65 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="nl">
 <head>
-  <title>GPS Tekenen op Kaart (v0.9.5)</title>
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+  <title>GPS Tekenen op Kaart</title>
+  <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Rubik&display=swap" rel="stylesheet">
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; }
-    #map { height: 80vh; width: 100%; }
-    #controls { padding: 10px; text-align: center; }
-    #output { padding: 10px; text-align: center; word-break: break-word; font-family: monospace; }
-    button { padding: 10px 20px; font-size: 16px; margin: 5px; }
-    .color-button { border: 2px solid #ccc; border-radius: 5px; cursor: pointer; }
-    #version { text-align:center; font-size: 12px; color: gray; margin-top: 10px; }
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Rubik', sans-serif;
+      background-color: #f4f4f4;
+    }
+    #map {
+      height: 70vh;
+      width: 100%;
+    }
+    #controls {
+      padding: 15px;
+      text-align: center;
+    }
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+      margin: 6px;
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      cursor: pointer;
+    }
+    .color-button {
+      border: 2px solid #ccc;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #gps-status {
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 10px;
+    }
+    #output {
+      padding: 10px;
+      text-align: center;
+      word-break: break-word;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
+  <div id="gps-status">GPS status: ⏳ Nog niet gestart</div>
   <div id="map"></div>
   <div id="controls">
-    <button id="start">Start Tekenen</button>
-    <button id="stop" disabled>Stop Tekenen</button>
-    <button id="showResult" disabled>Toon Coördinaten</button>
-    <button id="toggleEraseMode">Gum-Modus: UIT</button>
-    <button id="locateMe">Toon Mijn Locatie</button>
-    <button id="downloadImage">Download Afbeelding</button>
+    <button id="start">▶ Start Tekenen</button>
+    <button id="stop" disabled>⏹ Stop Tekenen</button>
+    <button id="showResult" disabled>📌 Toon Coördinaten</button>
+    <button id="eraseLast" disabled>🗑 Gum Laatste Lijn</button>
+    <button id="toggleEraseMode">✏️ Gum-Modus: UIT</button>
+    <button id="downloadImage">📷 Download Afbeelding</button>
     <div style="margin-top: 10px;">
       <button class="color-button" style="background-color: red; color: white;" onclick="setColor('red')">Felrood</button>
       <button class="color-button" style="background-color: deeppink; color: white;" onclick="setColor('deeppink')">Felroze</button>
@@ -39,143 +73,119 @@
     </div>
   </div>
   <div id="output"></div>
-  <div id="version">Versie: v0.9.5 (kleurfix actief)</div>
 
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
   <script>
-    window.onload = function () {
-      const map = L.map('map').setView([52.3676, 4.9041], 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
+    const map = L.map('map').setView([52.3676, 4.9041], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-      const drawingLayer = L.layerGroup().addTo(map);
-      let currentPolyline = null;
-      let watchId = null;
-      let currentColor = 'red';
-      let eraseMode = false;
-      let lastPos = null;
-      let locationMarker = null;
+    let polylines = [];
+    let currentPolyline = null;
+    let watchId = null;
+    let currentColor = 'red';
+    let eraseMode = false;
 
-      const startBtn = document.getElementById('start');
-      const stopBtn = document.getElementById('stop');
-      const showBtn = document.getElementById('showResult');
-      const toggleEraseBtn = document.getElementById('toggleEraseMode');
-      const downloadImageBtn = document.getElementById('downloadImage');
-      const locateMeBtn = document.getElementById('locateMe');
-      const output = document.getElementById('output');
+    const gpsStatus = document.getElementById('gps-status');
+    const startBtn = document.getElementById('start');
+    const stopBtn = document.getElementById('stop');
+    const showBtn = document.getElementById('showResult');
+    const eraseBtn = document.getElementById('eraseLast');
+    const toggleEraseBtn = document.getElementById('toggleEraseMode');
+    const downloadImageBtn = document.getElementById('downloadImage');
+    const output = document.getElementById('output');
 
-      function setColor(color) {
-        currentColor = color;
-        if (watchId !== null && !eraseMode) {
-          currentPolyline = null; // forceer nieuwe lijn met juiste kleur
-        }
+    function setColor(color) {
+      currentColor = color;
+      if (watchId !== null && !eraseMode) {
+        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
+        polylines.push(currentPolyline);
+        eraseBtn.disabled = false;
       }
+    }
 
-      toggleEraseBtn.onclick = () => {
-        eraseMode = !eraseMode;
-        toggleEraseBtn.textContent = 'Gum-Modus: ' + (eraseMode ? 'AAN' : 'UIT');
-      };
+    toggleEraseBtn.onclick = () => {
+      eraseMode = !eraseMode;
+      toggleEraseBtn.textContent = '✏️ Gum-Modus: ' + (eraseMode ? 'AAN' : 'UIT');
+    };
 
-      startBtn.onclick = () => {
-        if (navigator.geolocation) {
-          output.textContent = '';
-          currentPolyline = null;
+    startBtn.onclick = () => {
+      if (navigator.geolocation) {
+        polylines = [];
+        output.textContent = '';
+        gpsStatus.textContent = 'GPS status: ⏳ Bezig met zoeken...';
 
-          watchId = navigator.geolocation.watchPosition(pos => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            const currentPos = L.latLng(lat, lng);
+        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
+        polylines.push(currentPolyline);
+        eraseBtn.disabled = false;
 
-            if (eraseMode) {
-              drawingLayer.eachLayer(layer => {
-                if (layer instanceof L.Polyline) {
-                  let latlngs = layer.getLatLngs().filter(p => currentPos.distanceTo(p) > 5);
-                  layer.setLatLngs(latlngs);
-                }
-              });
-            } else {
-              if (!currentPolyline) {
-                currentPolyline = L.polyline([], { color: currentColor }).addTo(drawingLayer);
-              }
-              currentPolyline.addLatLng(currentPos);
+        watchId = navigator.geolocation.watchPosition(pos => {
+          const currentPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+
+          if (eraseMode) {
+            for (let polyline of polylines) {
+              let latlngs = polyline.getLatLngs().filter(p => currentPos.distanceTo(p) > 5);
+              polyline.setLatLngs(latlngs);
             }
-
-            map.setView(currentPos);
-            lastPos = currentPos;
-          }, err => {
-            alert('Fout bij ophalen locatie: ' + err.message);
-            console.error(err);
-          }, {
-            enableHighAccuracy: true
-          });
-
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-          showBtn.disabled = true;
-        } else {
-          alert('Geolocatie wordt niet ondersteund in deze browser.');
-        }
-      };
-
-      stopBtn.onclick = () => {
-        if (watchId !== null) {
-          navigator.geolocation.clearWatch(watchId);
-          watchId = null;
-        }
-        currentPolyline = null;
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        showBtn.disabled = false;
-      };
-
-      showBtn.onclick = () => {
-        let allCoords = [];
-        drawingLayer.eachLayer(layer => {
-          if (layer instanceof L.Polyline) {
-            allCoords.push(...layer.getLatLngs());
+          } else {
+            currentPolyline.addLatLng(currentPos);
           }
+
+          map.setView(currentPos, map.getZoom());
+          gpsStatus.textContent = 'GPS status: 📍 Actief';
+        }, err => {
+          gpsStatus.textContent = 'GPS status: ❌ Fout: ' + err.message;
+          alert('Fout bij ophalen locatie: ' + err.message);
+        }, {
+          enableHighAccuracy: true
         });
-        if (allCoords.length === 0) {
-          output.textContent = 'Geen coördinaten geregistreerd.';
-          return;
-        }
-        output.textContent = 'Coördinaten:\n' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
-      };
 
-      downloadImageBtn.onclick = () => {
-        leafletImage(map, function(err, canvas) {
-          if (err) {
-            alert("Er ging iets mis bij het genereren van de afbeelding.");
-            return;
-          }
-          const link = document.createElement('a');
-          link.download = 'tekening-kaart.png';
-          link.href = canvas.toDataURL();
-          link.click();
-        });
-      };
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        showBtn.disabled = true;
+      } else {
+        alert('Geolocatie wordt niet ondersteund in deze browser.');
+      }
+    };
 
-      locateMeBtn.onclick = () => {
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(pos => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            const currentPos = L.latLng(lat, lng);
-            map.setView(currentPos, 16);
+    stopBtn.onclick = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      showBtn.disabled = false;
+      gpsStatus.textContent = 'GPS status: ⏹ Gestopt';
+    };
 
-            if (locationMarker) {
-              locationMarker.setLatLng(currentPos);
-            } else {
-              locationMarker = L.marker(currentPos).addTo(map).bindPopup("Je bent hier").openPopup();
-            }
+    showBtn.onclick = () => {
+      let allCoords = polylines.flatMap(p => p.getLatLngs());
+      if (allCoords.length === 0) {
+        output.textContent = 'Geen coördinaten geregistreerd.';
+        return;
+      }
+      output.textContent = 'Coördinaten:\n' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
+    };
 
-          }, err => {
-            alert('Locatie niet beschikbaar: ' + err.message);
-          });
-        } else {
-          alert('Geolocatie wordt niet ondersteund in deze browser.');
-        }
-      };
+    eraseBtn.onclick = () => {
+      if (polylines.length > 0) {
+        const lastPolyline = polylines.pop();
+        map.removeLayer(lastPolyline);
+        currentPolyline = polylines[polylines.length - 1] || null;
+        eraseBtn.disabled = polylines.length === 0;
+      }
+    };
+
+    downloadImageBtn.onclick = () => {
+      leafletImage(map, function(err, canvas) {
+        const link = document.createElement('a');
+        link.download = 'tekening-kaart.png';
+        link.href = canvas.toDataURL();
+        link.click();
+      });
     };
   </script>
 </body>
