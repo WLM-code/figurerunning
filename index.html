@@ -180,7 +180,10 @@
     };
 
     downloadImageBtn.onclick = () => {
-      leafletImage(map, function(err, canvas) {
+      html2canvas(document.getElementById('map'), {
+        useCORS: true,
+        allowTaint: false
+      }).then(canvas => {
         const link = document.createElement('a');
         link.download = 'tekening-kaart.png';
         link.href = canvas.toDataURL();
