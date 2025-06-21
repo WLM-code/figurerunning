@@ -79,11 +79,15 @@
     </div>
   </div>
   <div id="output"></div>
-  <div id="version">Versie: 1.3 – 5 juni 2025</div>
+  <div id="version">Versie: 1.3.1 – 5 juni 2025</div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script>
+    window.onload = function () {
+      map.invalidateSize();
+    };
+
     const map = L.map('map').setView([52.3676, 4.9041], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
@@ -180,8 +184,7 @@
         output.textContent = 'Geen coördinaten geregistreerd.';
         return;
       }
-      output.textContent = 'Coördinaten:
-' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
+      output.textContent = 'Coördinaten:\n' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
     };
 
     eraseBtn.onclick = () => {
