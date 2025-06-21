@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -79,7 +78,7 @@
     </div>
   </div>
   <div id="output"></div>
-  <div id="version">Versie: 1.3.1 – 5 juni 2025</div>
+  <div id="version">Versie: 1.3.2 – 21 juni 2025</div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -112,7 +111,7 @@
     function setColor(color) {
       currentColor = color;
       if (watchId !== null && !eraseMode) {
-        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
+        currentPolyline = L.polyline([], { color: currentColor, weight: 5, opacity: 1.0 }).addTo(map);
         polylines.push(currentPolyline);
         eraseBtn.disabled = false;
       }
@@ -129,7 +128,7 @@
         output.textContent = '';
         gpsStatus.textContent = 'GPS status: ⏳ Bezig met zoeken...';
 
-        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
+        currentPolyline = L.polyline([], { color: currentColor, weight: 5, opacity: 1.0 }).addTo(map);
         polylines.push(currentPolyline);
         eraseBtn.disabled = false;
 
@@ -184,7 +183,8 @@
         output.textContent = 'Geen coördinaten geregistreerd.';
         return;
       }
-      output.textContent = 'Coördinaten:\n' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
+      output.textContent = 'Coördinaten:
+' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
     };
 
     eraseBtn.onclick = () => {
