@@ -85,8 +85,9 @@ button.chip.warn{background:var(--danger);color:#fff}
   padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);display:grid;gap:12px;max-height:94dvh}
 .prev{min-height:120px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:14px}
 .prev img{display:block;max-width:100%;max-height:56dvh;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.18)}
-.row2{display:grid;grid-template-columns:1.4fr 1fr;gap:10px}
+.row2{display:grid;grid-template-columns:1fr 1.2fr;gap:10px}
 .row2 .btn{flex-direction:row;gap:8px;font-size:15px}
+#sheetMsg{text-align:center}
 .link{border:0;background:none;color:var(--muted);font:600 14px inherit;font-family:inherit;padding:8px;cursor:pointer}
 :focus-visible{outline:3px solid #0a84ff;outline-offset:2px}
 </style>
@@ -128,9 +129,13 @@ button.chip.warn{background:var(--danger);color:#fff}
 <div class="sheet" id="sheet" hidden>
   <div class="card" role="dialog" aria-label="Deel je tekening">
     <div class="prev"><img id="prev" alt="Voorbeeld van je tekening" hidden><span id="prevMsg">Plaatje maken…</span></div>
+    <p class="hint" id="sheetMsg" hidden></p>
     <div class="row2">
       <button class="btn primary" id="doShare" disabled>Deel via…</button>
-      <button class="btn" id="doSave" disabled>Bewaar</button>
+      <button class="btn" id="doSave" disabled>
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg>
+        Bewaar in Foto's
+      </button>
     </div>
     <button class="link" id="closeSheet">Terug naar de kaart</button>
   </div>
@@ -396,6 +401,16 @@ function loadImg(src) {
     i.src = src;
   });
 }
+const FRAME_COLORS = ['#ff2d55', '#ff9500', '#ffd60a', '#30d158', '#00c7be', '#0a84ff', '#bf5af2'];
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
 async function renderExport() {
   const pts = segs.flatMap(s => s.p);
   if (!pts.length) return null;
@@ -404,51 +419,99 @@ async function renderExport() {
     if (a < minLat) minLat = a; if (a > maxLat) maxLat = a;
     if (b < minLng) minLng = b; if (b > maxLng) maxLng = b;
   }
-  const midLat = (minLat + maxLat) / 2, midLng = (minLng + maxLng) / 2;
-  const MAXW = 1080, MAXH = 1350, MINS = 720;
-  const sLat = Math.max((maxLat - minLat) * 1.3, 250 / 110540);
-  const sLng = Math.max((maxLng - minLng) * 1.3, 250 / (111320 * Math.cos(midLat * Math.PI / 180)));
-  const wAt = z => mx(midLng + sLng / 2, z) - mx(midLng - sLng / 2, z);
-  const hAt = z => my(midLat - sLat / 2, z) - my(midLat + sLat / 2, z);
-  let z = 18;
-  while (z > 1 && (wAt(z) > MAXW || hAt(z) > MAXH)) z--;
-  const W = Math.round(Math.max(wAt(z), MINS)), H = Math.round(Math.max(hAt(z), MINS));
-  const ox = mx(midLng, z) - W / 2, oy = my(midLat, z) - H / 2;
+  const W = 1080, H = 1350, INSET = 62, FILL = 0.75;
+
+  // Zoom zo dat de tekening ongeveer 75% van de breedte of hoogte van het plaatje vult.
+  const midLat = (minLat + maxLat) / 2;
+  const minPx0 = 80 / (156543.03 * Math.cos(midLat * Math.PI / 180));   // een piepkleine tekening niet eindeloos opblazen
+  const w0 = Math.max(mx(maxLng, 0) - mx(minLng, 0), minPx0);
+  const h0 = Math.max(my(minLat, 0) - my(maxLat, 0), minPx0);
+  const zf = Math.log2(Math.min(FILL * W / w0, FILL * H / h0));
+  const zt = Math.max(1, Math.min(19, Math.round(zf)));   // tegelzoom; de rest schalen we bij
+  const sc = 2 ** (zf - zt);
+  const cx = (mx(minLng, zt) + mx(maxLng, zt)) / 2;
+  const cy = (my(minLat, zt) + my(maxLat, zt)) / 2;
+  const X = lo => W / 2 + (mx(lo, zt) - cx) * sc;
+  const Y = la => H / 2 + (my(la, zt) - cy) * sc;
+
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#e9e6df'; ctx.fillRect(0, 0, W, H);
-  const n = 2 ** z, jobs = [];
-  for (let ty = Math.floor(oy / TS); ty <= Math.floor((oy + H) / TS); ty++) {
+  ctx.fillStyle = '#fff8ec'; ctx.fillRect(0, 0, W, H);
+
+  // tegels ophalen
+  const n = 2 ** zt, halfW = W / 2 / sc, halfH = H / 2 / sc, jobs = [];
+  for (let ty = Math.floor((cy - halfH) / TS); ty <= Math.floor((cy + halfH) / TS); ty++) {
     if (ty < 0 || ty >= n) continue;
-    for (let tx = Math.floor(ox / TS); tx <= Math.floor((ox + W) / TS); tx++) {
+    for (let tx = Math.floor((cx - halfW) / TS); tx <= Math.floor((cx + halfW) / TS); tx++) {
       const wx = ((tx % n) + n) % n;
-      jobs.push(loadImg(`https://tile.openstreetmap.org/${z}/${wx}/${ty}.png`).then(img => {
-        if (img) ctx.drawImage(img, Math.round(tx * TS - ox), Math.round(ty * TS - oy), TS, TS);
-      }));
+      jobs.push(loadImg(`https://tile.openstreetmap.org/${zt}/${wx}/${ty}.png`).then(img => ({ img, tx, ty })));
     }
   }
-  await Promise.all(jobs);
+  const tiles = await Promise.all(jobs);
+
+  // kaart en tekening binnen de lijst
+  ctx.save();
+  rr(ctx, INSET, INSET, W - 2 * INSET, H - 2 * INSET, 36); ctx.clip();
+  ctx.fillStyle = '#e9e6df'; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.scale(sc, sc);
+  for (const { img, tx, ty } of tiles) {
+    if (img) ctx.drawImage(img, tx * TS - cx, ty * TS - cy, TS + 0.6, TS + 0.6);
+  }
+  ctx.restore();
   ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(0, 0, W, H);   // kaart wat dempen zodat de lijn knalt
-  const lw = Math.max(7, W / 110);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (const pass of [0, 1]) {
     for (const s of segs) {
       if (s.p.length < 2) continue;
       ctx.beginPath();
-      s.p.forEach(([la, lo], i) => {
-        const x = mx(lo, z) - ox, y = my(la, z) - oy;
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-      });
+      s.p.forEach(([la, lo], i) => { i ? ctx.lineTo(X(lo), Y(la)) : ctx.moveTo(X(lo), Y(la)); });
       ctx.strokeStyle = pass ? s.c : 'rgba(255,255,255,.92)';
-      ctx.lineWidth = pass ? lw : lw + 5;
+      ctx.lineWidth = pass ? 11 : 17;
       ctx.stroke();
     }
   }
-  const txt = '© OpenStreetMap-bijdragers';
-  ctx.font = '600 13px system-ui,sans-serif';
-  const tw = ctx.measureText(txt).width;
-  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(W - tw - 18, H - 26, tw + 18, 26);
-  ctx.fillStyle = '#333'; ctx.fillText(txt, W - tw - 9, H - 8);
+  const attr = '© OpenStreetMap-bijdragers';
+  ctx.font = '600 14px system-ui,sans-serif';
+  const aw = ctx.measureText(attr).width;
+  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(W - INSET - aw - 20, H - INSET - 28, aw + 20, 28);
+  ctx.fillStyle = '#333'; ctx.fillText(attr, W - INSET - aw - 10, H - INSET - 9);
+  ctx.restore();
+
+  // dunne rand om de kaart
+  rr(ctx, INSET, INSET, W - 2 * INSET, H - 2 * INSET, 36);
+  ctx.lineWidth = 6; ctx.strokeStyle = '#1d1b2e'; ctx.stroke();
+
+  // kleurrijke lijst: streepjes in alle kleuren rond het plaatje
+  const c = 26, rw = W - 2 * c, rh = H - 2 * c, rad = 40, nc = FRAME_COLORS.length;
+  const perim = 2 * (rw + rh) - 8 * rad + 2 * Math.PI * rad;
+  const L = perim / (nc * Math.round(perim / (nc * 46)));   // past precies rond, dus geen naad
+  ctx.lineWidth = 36; ctx.lineCap = 'butt';
+  FRAME_COLORS.forEach((col, k) => {
+    rr(ctx, c, c, rw, rh, rad);
+    ctx.setLineDash([L, (nc - 1) * L]);
+    ctx.lineDashOffset = ((nc - k) % nc) * L;
+    ctx.strokeStyle = col; ctx.stroke();
+  });
+  ctx.setLineDash([]); ctx.lineDashOffset = 0;
+
+  // tekst linksonder: gekleurde letters op een donker label
+  const text = 'I made this for you';
+  ctx.font = '800 46px ui-rounded,"SF Pro Rounded","Arial Rounded MT Bold",system-ui,-apple-system,"Segoe UI",sans-serif';
+  ctx.textBaseline = 'middle';
+  const chars = [...text];
+  const widths = chars.map(ch => ctx.measureText(ch).width);
+  const tw = widths.reduce((a, b) => a + b, 0);
+  const ph = 76, pw = tw + 56, px = INSET + 22, py = H - INSET - 22 - ph;
+  rr(ctx, px, py, pw, ph, ph / 2);
+  ctx.fillStyle = '#1d1b2e'; ctx.fill();
+  ctx.lineWidth = 4; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+  let x0 = px + 28, ci = 0;
+  chars.forEach((ch, i) => {
+    if (ch !== ' ') { ctx.fillStyle = FRAME_COLORS[ci % nc]; ci++; ctx.fillText(ch, x0, py + ph / 2 + 2); }
+    x0 += widths[i];
+  });
+  ctx.textBaseline = 'alphabetic';
   return cv;
 }
 
@@ -462,26 +525,47 @@ $('#share').onclick = async () => {
   if (!segs.length) { toast('Er is nog niets getekend.'); return; }
   $('#sheet').hidden = false;
   $('#prev').hidden = true; $('#prevMsg').hidden = false; $('#prevMsg').textContent = 'Plaatje maken…';
-  $('#doShare').disabled = true; $('#doSave').disabled = true;
+  $('#doShare').disabled = true; $('#doSave').disabled = true; sheetMsg('');
   const cv = await renderExport();
   const blob = cv && await new Promise(r => cv.toBlob(r, 'image/png'));
   if (!blob) { $('#prevMsg').textContent = 'Het plaatje maken is niet gelukt.'; return; }
   shareBlob = blob; shareUrl = URL.createObjectURL(blob);
   $('#prev').src = shareUrl; $('#prev').hidden = false; $('#prevMsg').hidden = true;
   $('#doShare').disabled = false; $('#doSave').disabled = false;
+  sheetMsg(IOS ? 'Tip: houd het plaatje ingedrukt voor "Voeg toe aan Foto\'s".' : '');
 };
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function fileName() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `krabbel-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.png`;
+}
+function sheetMsg(t) { const m = $('#sheetMsg'); m.textContent = t; m.hidden = !t; }
+function canShareFile(file) { return !!(navigator.canShare && navigator.canShare({ files: [file] })); }
+function download() {
+  const a = document.createElement('a'); a.href = shareUrl; a.download = fileName();
+  document.body.append(a); a.click(); a.remove();
+}
 $('#doShare').onclick = async () => {
   if (!shareBlob) return;
-  const file = new File([shareBlob], 'krabbel.png', { type: 'image/png' });
+  const file = new File([shareBlob], fileName(), { type: 'image/png' });
   try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: 'Mijn Krabbel' });
-    else { $('#doSave').click(); toast('Delen kan hier niet. Het plaatje is bewaard.'); }
+    if (canShareFile(file)) await navigator.share({ files: [file], title: 'Mijn Krabbel' });
+    else { download(); sheetMsg('Delen kan hier niet. Het plaatje is opgeslagen in je downloads.'); }
   } catch (e) { /* gesloten zonder te delen */ }
 };
-$('#doSave').onclick = () => {
-  if (!shareUrl) return;
-  const a = document.createElement('a'); a.href = shareUrl; a.download = 'krabbel.png';
-  document.body.append(a); a.click(); a.remove();
+// Een web app mag niet rechtstreeks in Foto's schrijven. iPhone: via het deelmenu ("Bewaar afbeelding"). Android: een download, die de Galerij/Foto's oppikt.
+$('#doSave').onclick = async () => {
+  if (!shareBlob) return;
+  const file = new File([shareBlob], fileName(), { type: 'image/png' });
+  try {
+    if (IOS && canShareFile(file)) {
+      sheetMsg('Kies in het menu "Bewaar afbeelding".');
+      await navigator.share({ files: [file] });
+    } else {
+      download();
+      sheetMsg('Opgeslagen als ' + file.name + '. Je vindt hem in Foto\'s of Galerij, anders in je downloads.');
+    }
+  } catch (e) { /* gesloten zonder te bewaren */ }
 };
 $('#closeSheet').onclick = closeSheet;
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
