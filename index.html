@@ -1,201 +1,479 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="nl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GPS Tekenen op Kaart</title>
-  <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Rubik&display=swap" rel="stylesheet">
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      font-family: 'Rubik', sans-serif;
-      background-color: #f4f4f4;
-    }
-    #map {
-      height: 70vh;
-      width: 100%;
-    }
-    #controls {
-      padding: 15px;
-      text-align: center;
-    }
-    button {
-      padding: 12px 20px;
-      font-size: 16px;
-      margin: 6px;
-      border: none;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-      cursor: pointer;
-    }
-    .color-button {
-      border: 2px solid #ccc;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    #gps-status {
-      font-weight: bold;
-      color: #333;
-      margin-bottom: 10px;
-    }
-    #output {
-      padding: 10px;
-      text-align: center;
-      word-break: break-word;
-      font-family: monospace;
-    }
-    #version {
-      text-align: center;
-      font-size: 12px;
-      color: gray;
-      margin-top: 10px;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Krabbel</title>
+<meta name="theme-color" content="#1d1b2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Krabbel">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: volledig scherm kaart, zwevende statusbalk bovenin, bedieningsdock onderin. */
+:root{
+  --ink:#1d1b2e; --paper:#fbfaf7; --panel:rgba(251,250,247,.93); --muted:#6b6880;
+  --btn:#ece9e2; --btn-on:#1d1b2e; --btn-on-ink:#fbfaf7; --danger:#d7263d;
+  --dock-h:170px;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --ink:#f3f1ec; --paper:#1d1b2e; --panel:rgba(29,27,46,.93); --muted:#a29fb8;
+         --btn:#2d2a44; --btn-on:#f3f1ec; --btn-on-ink:#1d1b2e; }
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overscroll-behavior:none}
+body{
+  font-family: ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color:var(--ink); background:var(--paper);
+  -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; touch-action:manipulation;
+}
+#map{position:fixed;inset:0;background:#e9e6df}
+.leaflet-tile-pane{filter:saturate(.55) contrast(.95) brightness(1.04)}
+.leaflet-bottom{bottom:var(--dock-h)}
+
+.top{position:fixed;top:0;left:0;right:0;z-index:1000;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0;pointer-events:none}
+.top>*{pointer-events:auto}
+.top-r{display:flex;gap:8px}
+.chip{background:var(--panel);color:var(--ink);border-radius:999px;padding:9px 14px;font-size:13px;font-weight:600;
+  font-variant-numeric:tabular-nums;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  box-shadow:0 2px 12px rgba(0,0,0,.12);border:0;font-family:inherit}
+button.chip{cursor:pointer}
+button.chip.warn{background:var(--danger);color:#fff}
+
+.toast{position:fixed;left:16px;right:16px;top:calc(env(safe-area-inset-top,0px) + 58px);z-index:1100;margin:auto;max-width:420px;
+  background:var(--btn-on);color:var(--btn-on-ink);border-radius:14px;padding:12px 16px;font-size:14px;line-height:1.35;
+  box-shadow:0 6px 24px rgba(0,0,0,.25)}
+
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:var(--panel);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:24px 24px 0 0;
+  padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 14px);display:grid;gap:12px;
+  box-shadow:0 -8px 30px rgba(0,0,0,.14)}
+.sw{display:flex;gap:12px;overflow-x:auto;padding:7px 7px;margin:0 -7px;scrollbar-width:none}
+.sw::-webkit-scrollbar{display:none}
+.dot{flex:none;width:38px;height:38px;border-radius:50%;border:0;padding:0;background:var(--c);position:relative;
+  box-shadow:inset 0 0 0 2px rgba(0,0,0,.14);cursor:pointer}
+.dot[aria-pressed="true"]{box-shadow:0 0 0 3px var(--paper),0 0 0 5.5px var(--ink)}
+.dot.custom{background:conic-gradient(#ff2d55,#ffd60a,#30d158,#00c7be,#0a84ff,#bf5af2,#ff2d55);overflow:visible}
+.dot.custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
+
+.start{min-height:56px;border:0;border-radius:18px;background:var(--btn-on);color:var(--btn-on-ink);
+  font:700 17px/1 inherit;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px}
+.start i{width:14px;height:14px;border-radius:50%;background:var(--cur,#ff2d55);box-shadow:0 0 0 2px var(--btn-on-ink)}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.btn{min-height:56px;border:0;border-radius:16px;background:var(--btn);color:var(--ink);font:600 14px/1.1 inherit;font-family:inherit;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer}
+.btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn[aria-pressed="true"]{background:var(--btn-on);color:var(--btn-on-ink)}
+.btn.primary{background:var(--btn-on);color:var(--btn-on-ink)}
+.btn:disabled{opacity:.45}
+.hint{margin:0;font-size:13px;line-height:1.4;color:var(--muted)}
+
+.sheet{position:fixed;inset:0;z-index:2000;background:rgba(10,10,20,.58);display:flex;align-items:flex-end;justify-content:center}
+.card{width:100%;max-width:520px;background:var(--paper);color:var(--ink);border-radius:24px 24px 0 0;
+  padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);display:grid;gap:12px;max-height:94dvh}
+.prev{min-height:120px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:14px}
+.prev img{display:block;max-width:100%;max-height:56dvh;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.18)}
+.row2{display:grid;grid-template-columns:1.4fr 1fr;gap:10px}
+.row2 .btn{flex-direction:row;gap:8px;font-size:15px}
+.link{border:0;background:none;color:var(--muted);font:600 14px inherit;font-family:inherit;padding:8px;cursor:pointer}
+:focus-visible{outline:3px solid #0a84ff;outline-offset:2px}
+</style>
 </head>
 <body>
-  <div id="gps-status">GPS status: ⏳ Nog niet gestart</div>
-  <div id="map">Kaart wordt geladen...</div>
-  <div id="controls">
-    <button id="start">▶ Start Tekenen</button>
-    <button id="stop" disabled>⏹ Stop Tekenen</button>
-    <button id="showResult" disabled>📌 Toon Coördinaten</button>
-    <button id="eraseLast" disabled>🗑 Gum Laatste Lijn</button>
-    <button id="toggleEraseMode">✏️ Gum-Modus: UIT</button>
-    <button id="downloadImage">📷 Download Afbeelding</button>
-    <div style="margin-top: 10px;">
-      <button class="color-button" style="background-color: red; color: white;" onclick="setColor('red')">Felrood</button>
-      <button class="color-button" style="background-color: deeppink; color: white;" onclick="setColor('deeppink')">Felroze</button>
-      <button class="color-button" style="background-color: indigo; color: white;" onclick="setColor('indigo')">Dieppaars</button>
-      <button class="color-button" style="background-color: cyan; color: black;" onclick="setColor('cyan')">Cyaanblauw</button>
-      <button class="color-button" style="background-color: yellow; color: black;" onclick="setColor('yellow')">Felgeel</button>
-      <button class="color-button" style="background-color: #000000; color: white;" onclick="setColor('#000000')">Zwart</button>
-      <button class="color-button" style="background-color: white; color: black;" onclick="setColor('white')">Wit</button>
-      <button class="color-button" style="background-color: lime; color: black;" onclick="setColor('lime')">Limoengroen</button>
-      <button class="color-button" style="background-color: orchid; color: black;" onclick="setColor('orchid')">Orchideepaars</button>
-    </div>
+<div id="map"></div>
+
+<div class="top">
+  <div class="chip" id="status" role="status">Klaar om te starten</div>
+  <div class="top-r">
+    <button class="chip" id="follow" hidden>Volg mij</button>
+    <button class="chip" id="reset">Nieuw</button>
   </div>
-  <div id="output"></div>
-  <div id="version">Versie: 1.3.4 – 21 juni 2025</div>
+</div>
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script>
-    let map, polylines = [], currentPolyline = null, watchId = null;
-    let currentColor = '#000000';
-    let eraseMode = false;
-    const gpsStatus = document.getElementById('gps-status');
-    const startBtn = document.getElementById('start');
-    const stopBtn = document.getElementById('stop');
-    const showBtn = document.getElementById('showResult');
-    const eraseBtn = document.getElementById('eraseLast');
-    const toggleEraseBtn = document.getElementById('toggleEraseMode');
-    const downloadImageBtn = document.getElementById('downloadImage');
-    const output = document.getElementById('output');
+<div class="toast" id="toast" hidden role="alert"></div>
 
-    function setColor(color) {
-      currentColor = color;
-      if (watchId !== null && !eraseMode) {
-        currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
-        polylines.push(currentPolyline);
-        eraseBtn.disabled = false;
-      }
+<div class="dock" id="dock">
+  <div class="sw" id="swatches" role="group" aria-label="Lijnkleur"></div>
+  <button class="start" id="start"><i></i><span id="startLabel">Start tekenen</span></button>
+  <div class="row" id="row" hidden>
+    <button class="btn" id="pen" aria-pressed="false">
+      <svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg><span id="penLabel">Pauze</span>
+    </button>
+    <button class="btn" id="gum" aria-pressed="false">
+      <svg viewBox="0 0 24 24"><path d="M7 20h13M5.5 15.5l9-9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8L11 18.5H8z"/><path d="M5.5 15.5L9 19"/></svg><span>Gum</span>
+    </button>
+    <button class="btn" id="share">
+      <svg viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg><span>Delen</span>
+    </button>
+  </div>
+  <p class="hint" id="hint">Zet je locatie aan, tik op Start en ga lopen of rennen. Houd de app open en het scherm aan.</p>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="card" role="dialog" aria-label="Deel je tekening">
+    <div class="prev"><img id="prev" alt="Voorbeeld van je tekening" hidden><span id="prevMsg">Plaatje maken…</span></div>
+    <div class="row2">
+      <button class="btn primary" id="doShare" disabled>Deel via…</button>
+      <button class="btn" id="doSave" disabled>Bewaar</button>
+    </div>
+    <button class="link" id="closeSheet">Terug naar de kaart</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const COLORS = ['#ff2d55','#ff9500','#ffd60a','#30d158','#00c7be','#0a84ff','#bf5af2','#1d1b2e'];
+const STEP = 5;        // meter tussen opgeslagen punten
+const MIN_STEP = 3;    // kleinere bewegingen zijn GPS-ruis
+const MAX_ACC = 30;    // slechtere GPS-nauwkeurigheid (m) wordt genegeerd
+const ERASE_R = 12;    // gumstraal in meter
+const KEY = 'krabbel.v1';
+const DEMO = /[?&]demo\b/.test(location.search);
+
+let segs = [];           // [{c:'#hex', p:[[lat,lng],...]}]
+let color = COLORS[0], penDown = true, eraser = false, tracking = false, follow = true;
+let last = null, lastT = 0, lastAcc = null, curSeg = null;
+let watchId = null, demoTimer = null, wake = null;
+
+/* ---------- hulpfuncties ---------- */
+const r6 = n => Math.round(n * 1e6) / 1e6;
+function dist(a, b) {
+  const k = Math.cos((a[0] + b[0]) * Math.PI / 360);
+  return Math.hypot((b[1] - a[1]) * 111320 * k, (b[0] - a[0]) * 110540);
+}
+function total() {
+  let m = 0;
+  for (const s of segs) for (let i = 1; i < s.p.length; i++) m += dist(s.p[i - 1], s.p[i]);
+  return m;
+}
+const fmt = m => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(2).replace('.', ',') + ' km';
+function toast(msg, ms = 4000) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, ms);
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(segs.map(s => ({ c: s.c, p: s.p })))); } catch (e) {}
+}
+function load() {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || '[]');
+    if (Array.isArray(v)) segs = v.filter(s => s && Array.isArray(s.p) && s.p.length > 1);
+  } catch (e) {}
+}
+
+/* ---------- kaart ---------- */
+const map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true }).setView([52.3702, 4.8952], 14);
+L.control.attribution({ prefix: false, position: 'bottomright' }).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+const group = L.layerGroup().addTo(map);
+let me = null;
+const eraserCircle = L.circle([0, 0], { radius: ERASE_R, color: '#d7263d', weight: 2, dashArray: '4 4', fillOpacity: .12, interactive: false });
+
+function addLayer(s) {
+  const o = { lineCap: 'round', lineJoin: 'round', interactive: false };
+  s.casing = L.polyline(s.p, { ...o, color: '#ffffff', weight: 10, opacity: .9 }).addTo(group);
+  s.line = L.polyline(s.p, { ...o, color: s.c, weight: 6 }).addTo(group);
+}
+function rebuild() { group.clearLayers(); segs.forEach(addLayer); }
+
+map.on('dragstart', () => { follow = false; $('#follow').hidden = false; });
+$('#follow').onclick = () => { follow = true; $('#follow').hidden = true; if (last) map.panTo(last); };
+
+const dock = $('#dock');
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--dock-h', dock.offsetHeight + 'px');
+}).observe(dock);
+
+/* ---------- tekenen en gummen ---------- */
+function draw(pts) {
+  if (!curSeg) { curSeg = { c: color, p: [last.slice()] }; segs.push(curSeg); addLayer(curSeg); }
+  curSeg.p.push(...pts);
+  curSeg.casing.setLatLngs(curSeg.p);
+  curSeg.line.setLatLngs(curSeg.p);
+}
+function erase(centers) {
+  const out = []; let changed = false;
+  for (const s of segs) {
+    let run = [], cut = false;
+    for (const p of s.p) {
+      if (centers.some(c => dist(c, p) < ERASE_R)) {
+        cut = true;
+        if (run.length > 1) out.push({ c: s.c, p: run });
+        run = [];
+      } else run.push(p);
     }
+    if (!cut) { out.push(s); continue; }
+    changed = true;
+    if (run.length > 1) out.push({ c: s.c, p: run });
+  }
+  if (changed) { segs = out; curSeg = null; rebuild(); }
+}
 
-    try {
-      map = L.map('map').setView([52.3676, 4.9041], 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
-      setTimeout(() => {
-        map.invalidateSize();
-        console.log("✅ Kaart succesvol geladen en weergegeven.");
-      }, 300);
-    } catch (e) {
-      console.error("❌ Fout bij initialiseren van kaart:", e);
-      document.getElementById("map").innerText = "Fout bij laden van kaart.";
+/* ---------- GPS ---------- */
+function setStatus() {
+  const el = $('#status');
+  if (!tracking && !segs.length) { el.textContent = 'Klaar om te starten'; return; }
+  const parts = [];
+  if (tracking) {
+    if (lastAcc == null) parts.push('GPS zoeken…');
+    else if (lastAcc > MAX_ACC) parts.push('Zwak signaal ±' + Math.round(lastAcc) + ' m');
+    else parts.push('GPS ±' + Math.round(lastAcc) + ' m');
+  }
+  parts.push(fmt(total()));
+  el.textContent = parts.join(' · ');
+}
+function showMe(cur) {
+  if (!me) me = L.circleMarker(cur, { radius: 9, color: '#fff', weight: 3, fillColor: color, fillOpacity: 1 }).addTo(map);
+  else me.setLatLng(cur);
+  if (eraser) eraserCircle.setLatLng(cur);
+  if (follow) map.panTo(cur, { animate: true, duration: .6 });
+}
+function onFix(pos) {
+  const { latitude, longitude, accuracy } = pos.coords;
+  const cur = [r6(latitude), r6(longitude)];
+  const t = pos.timestamp || Date.now();
+  lastAcc = accuracy;
+  showMe(cur);
+  if (accuracy > MAX_ACC) { setStatus(); return; }
+  if (!last) {
+    last = cur; lastT = t;
+    if (follow) map.setView(cur, Math.max(map.getZoom(), 17));
+    setStatus(); return;
+  }
+  const m = dist(last, cur);
+  if (m < MIN_STEP) { setStatus(); return; }
+  const dt = (t - lastT) / 1000;
+  if (dt > 20 && m > 60) {      // app stond stil (scherm uit, andere app): geen rechte lijn door het gat
+    curSeg = null; last = cur; lastT = t;
+    toast('Het volgen stond even stil, bijvoorbeeld door een uitgeschakeld scherm. Dat stuk is niet getekend.');
+    setStatus(); return;
+  }
+  if (m > 150 && dt < 10) return; // onmogelijke sprong
+  const n = Math.ceil(m / STEP), pts = [];
+  for (let i = 1; i <= n; i++) {
+    const f = i / n;
+    pts.push([r6(last[0] + (cur[0] - last[0]) * f), r6(last[1] + (cur[1] - last[1]) * f)]);
+  }
+  if (eraser) erase(pts); else if (penDown) draw(pts);
+  last = cur; lastT = t;
+  setStatus(); save();
+}
+function onErr(err) {
+  if (err.code === 1) toast('Locatie is geweigerd. Zet locatietoegang voor deze site aan in de instellingen van je telefoon.', 7000);
+  else toast('Even geen GPS-signaal. Ga naar een open plek.', 4000);
+}
+async function lockScreen() {
+  try {
+    if ('wakeLock' in navigator && !wake) {
+      wake = await navigator.wakeLock.request('screen');
+      wake.addEventListener('release', () => { wake = null; });
     }
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && tracking) lockScreen();
+});
+function startDemo() {
+  const c0 = [52.3676, 4.9041]; let th = 0;
+  toast('Demo: een gesimuleerde wandeling. Wissel van kleur en probeer de gum.', 5000);
+  demoTimer = setInterval(() => {
+    th += 0.05;
+    const r = 110 + 45 * Math.sin(3 * th);
+    const lat = c0[0] + (r * Math.sin(th)) / 110540;
+    const lng = c0[1] + (r * Math.cos(th)) / (111320 * Math.cos(c0[0] * Math.PI / 180));
+    onFix({ coords: { latitude: lat, longitude: lng, accuracy: 8 }, timestamp: Date.now() });
+  }, 400);
+}
+function startTracking() {
+  if (!DEMO && !navigator.geolocation) { toast('Deze browser kan je locatie niet bepalen.'); return; }
+  tracking = true; last = null; curSeg = null; lastAcc = null;
+  $('#start').hidden = true; $('#hint').hidden = true; $('#row').hidden = false;
+  setStatus();
+  lockScreen();
+  if (DEMO) startDemo();
+  else watchId = navigator.geolocation.watchPosition(onFix, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+}
 
-    toggleEraseBtn.onclick = () => {
-      eraseMode = !eraseMode;
-      toggleEraseBtn.textContent = '✏️ Gum-Modus: ' + (eraseMode ? 'AAN' : 'UIT');
-    };
+/* ---------- bediening ---------- */
+const sw = $('#swatches');
+COLORS.forEach(c => {
+  const b = document.createElement('button');
+  b.className = 'dot'; b.dataset.c = c; b.style.setProperty('--c', c); b.setAttribute('aria-label', 'Kleur ' + c);
+  sw.append(b);
+});
+const custom = document.createElement('label');
+custom.className = 'dot custom'; custom.dataset.custom = '1';
+custom.innerHTML = '<input type="color" id="cc" value="#ff2d55" aria-label="Eigen kleur">';
+sw.append(custom);
 
-    startBtn.onclick = () => {
-      if (!navigator.geolocation) {
-        gpsStatus.textContent = 'GPS status: ❌ Niet ondersteund door deze browser';
-        return;
-      }
+function paintSwatches() {
+  sw.querySelectorAll('.dot[data-c]').forEach(b => b.setAttribute('aria-pressed', String(!eraser && b.dataset.c === color)));
+  custom.setAttribute('aria-pressed', String(!eraser && !COLORS.includes(color)));
+  $('#start').style.setProperty('--cur', color);
+}
+function setColor(c) {
+  color = c; curSeg = null;
+  if (eraser) setEraser(false);
+  if (me) me.setStyle({ fillColor: c });
+  paintSwatches();
+}
+function setEraser(v) {
+  eraser = v; curSeg = null;
+  $('#gum').setAttribute('aria-pressed', String(v));
+  if (v && last) eraserCircle.setLatLng(last).addTo(map); else eraserCircle.remove();
+  if (v) toast('Gum aan. Loop terug over de lijn die je wilt wissen.', 3500);
+  paintSwatches();
+}
+sw.addEventListener('click', e => {
+  const b = e.target.closest('.dot[data-c]');
+  if (b) setColor(b.dataset.c);
+});
+$('#cc').addEventListener('input', e => setColor(e.target.value));
+$('#start').onclick = startTracking;
+$('#pen').onclick = () => {
+  penDown = !penDown; curSeg = null;
+  $('#pen').setAttribute('aria-pressed', String(!penDown));
+  $('#penLabel').textContent = penDown ? 'Pauze' : 'Verder';
+};
+$('#gum').onclick = () => setEraser(!eraser);
 
-      gpsStatus.textContent = 'GPS status: ✅ Bezig met volgen...';
-      output.textContent = '';
-      polylines = [];
-      currentPolyline = L.polyline([], { color: currentColor }).addTo(map);
-      polylines.push(currentPolyline);
-      eraseBtn.disabled = false;
+let resetArmed = false;
+$('#reset').onclick = () => {
+  const b = $('#reset');
+  if (!resetArmed) {
+    resetArmed = true; b.textContent = 'Zeker weten?'; b.classList.add('warn');
+    setTimeout(() => { resetArmed = false; b.textContent = 'Nieuw'; b.classList.remove('warn'); }, 3000);
+    return;
+  }
+  resetArmed = false; b.textContent = 'Nieuw'; b.classList.remove('warn');
+  segs = []; curSeg = null; rebuild(); save(); setStatus();
+};
 
-      watchId = navigator.geolocation.watchPosition(pos => {
-        const { latitude, longitude } = pos.coords;
-        const currentPos = L.latLng(latitude, longitude);
-
-        if (eraseMode) {
-          polylines.forEach(line => {
-            const points = line.getLatLngs().filter(p => currentPos.distanceTo(p) > 5);
-            line.setLatLngs(points);
-          });
-        } else {
-          currentPolyline.addLatLng(currentPos);
-        }
-
-        map.setView(currentPos);
-      }, err => {
-        gpsStatus.textContent = 'GPS status: ❌ Fout - ' + err.message;
-      }, {
-        enableHighAccuracy: true
+/* ---------- delen als plaatje ---------- */
+const TS = 256;
+const mx = (lng, z) => (lng + 180) / 360 * TS * 2 ** z;
+const my = (lat, z) => { const s = Math.sin(lat * Math.PI / 180); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TS * 2 ** z; };
+function loadImg(src) {
+  return new Promise(res => {
+    const i = new Image(); i.crossOrigin = 'anonymous';
+    const to = setTimeout(() => res(null), 15000);
+    i.onload = () => { clearTimeout(to); res(i); };
+    i.onerror = () => { clearTimeout(to); res(null); };
+    i.src = src;
+  });
+}
+async function renderExport() {
+  const pts = segs.flatMap(s => s.p);
+  if (!pts.length) return null;
+  let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+  for (const [a, b] of pts) {
+    if (a < minLat) minLat = a; if (a > maxLat) maxLat = a;
+    if (b < minLng) minLng = b; if (b > maxLng) maxLng = b;
+  }
+  const midLat = (minLat + maxLat) / 2, midLng = (minLng + maxLng) / 2;
+  const MAXW = 1080, MAXH = 1350, MINS = 720;
+  const sLat = Math.max((maxLat - minLat) * 1.3, 250 / 110540);
+  const sLng = Math.max((maxLng - minLng) * 1.3, 250 / (111320 * Math.cos(midLat * Math.PI / 180)));
+  const wAt = z => mx(midLng + sLng / 2, z) - mx(midLng - sLng / 2, z);
+  const hAt = z => my(midLat - sLat / 2, z) - my(midLat + sLat / 2, z);
+  let z = 18;
+  while (z > 1 && (wAt(z) > MAXW || hAt(z) > MAXH)) z--;
+  const W = Math.round(Math.max(wAt(z), MINS)), H = Math.round(Math.max(hAt(z), MINS));
+  const ox = mx(midLng, z) - W / 2, oy = my(midLat, z) - H / 2;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#e9e6df'; ctx.fillRect(0, 0, W, H);
+  const n = 2 ** z, jobs = [];
+  for (let ty = Math.floor(oy / TS); ty <= Math.floor((oy + H) / TS); ty++) {
+    if (ty < 0 || ty >= n) continue;
+    for (let tx = Math.floor(ox / TS); tx <= Math.floor((ox + W) / TS); tx++) {
+      const wx = ((tx % n) + n) % n;
+      jobs.push(loadImg(`https://tile.openstreetmap.org/${z}/${wx}/${ty}.png`).then(img => {
+        if (img) ctx.drawImage(img, Math.round(tx * TS - ox), Math.round(ty * TS - oy), TS, TS);
+      }));
+    }
+  }
+  await Promise.all(jobs);
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(0, 0, W, H);   // kaart wat dempen zodat de lijn knalt
+  const lw = Math.max(7, W / 110);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const pass of [0, 1]) {
+    for (const s of segs) {
+      if (s.p.length < 2) continue;
+      ctx.beginPath();
+      s.p.forEach(([la, lo], i) => {
+        const x = mx(lo, z) - ox, y = my(la, z) - oy;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       });
+      ctx.strokeStyle = pass ? s.c : 'rgba(255,255,255,.92)';
+      ctx.lineWidth = pass ? lw : lw + 5;
+      ctx.stroke();
+    }
+  }
+  const txt = '© OpenStreetMap-bijdragers';
+  ctx.font = '600 13px system-ui,sans-serif';
+  const tw = ctx.measureText(txt).width;
+  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(W - tw - 18, H - 26, tw + 18, 26);
+  ctx.fillStyle = '#333'; ctx.fillText(txt, W - tw - 9, H - 8);
+  return cv;
+}
 
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      showBtn.disabled = true;
-    };
+let shareBlob = null, shareUrl = null;
+function closeSheet() {
+  $('#sheet').hidden = true;
+  if (shareUrl) { URL.revokeObjectURL(shareUrl); shareUrl = null; }
+  shareBlob = null;
+}
+$('#share').onclick = async () => {
+  if (!segs.length) { toast('Er is nog niets getekend.'); return; }
+  $('#sheet').hidden = false;
+  $('#prev').hidden = true; $('#prevMsg').hidden = false; $('#prevMsg').textContent = 'Plaatje maken…';
+  $('#doShare').disabled = true; $('#doSave').disabled = true;
+  const cv = await renderExport();
+  const blob = cv && await new Promise(r => cv.toBlob(r, 'image/png'));
+  if (!blob) { $('#prevMsg').textContent = 'Het plaatje maken is niet gelukt.'; return; }
+  shareBlob = blob; shareUrl = URL.createObjectURL(blob);
+  $('#prev').src = shareUrl; $('#prev').hidden = false; $('#prevMsg').hidden = true;
+  $('#doShare').disabled = false; $('#doSave').disabled = false;
+};
+$('#doShare').onclick = async () => {
+  if (!shareBlob) return;
+  const file = new File([shareBlob], 'krabbel.png', { type: 'image/png' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: 'Mijn Krabbel' });
+    else { $('#doSave').click(); toast('Delen kan hier niet. Het plaatje is bewaard.'); }
+  } catch (e) { /* gesloten zonder te delen */ }
+};
+$('#doSave').onclick = () => {
+  if (!shareUrl) return;
+  const a = document.createElement('a'); a.href = shareUrl; a.download = 'krabbel.png';
+  document.body.append(a); a.click(); a.remove();
+};
+$('#closeSheet').onclick = closeSheet;
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
 
-    stopBtn.onclick = () => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-      }
-      gpsStatus.textContent = 'GPS status: ⏸ Gestopt';
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      showBtn.disabled = false;
-    };
-
-    showBtn.onclick = () => {
-      const allCoords = polylines.flatMap(p => p.getLatLngs());
-      output.textContent = allCoords.length === 0
-        ? 'Geen coördinaten geregistreerd.'
-        : 'Coördinaten:\n' + allCoords.map(c => `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`).join(', ');
-    };
-
-    eraseBtn.onclick = () => {
-      if (polylines.length > 0) {
-        const last = polylines.pop();
-        map.removeLayer(last);
-        currentPolyline = polylines[polylines.length - 1] || null;
-        eraseBtn.disabled = polylines.length === 0;
-      }
-    };
-
-    downloadImageBtn.onclick = () => {
-      html2canvas(document.getElementById('map')).then(canvas => {
-        const link = document.createElement('a');
-        link.download = 'tekening-kaart.png';
-        link.href = canvas.toDataURL();
-        link.click();
-      });
-    };
-  </script>
+/* ---------- opstarten ---------- */
+load(); rebuild(); paintSwatches(); setStatus();
+if (segs.length) {
+  const all = segs.flatMap(s => s.p);
+  map.fitBounds(L.latLngBounds(all), { padding: [40, 40] });
+  $('#startLabel').textContent = 'Verder tekenen';
+}
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+})();
+</script>
 </body>
 </html>
