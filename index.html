@@ -50,6 +50,12 @@ button.chip.warn{background:var(--danger);color:#fff}
   background:var(--btn-on);color:var(--btn-on-ink);border-radius:14px;padding:12px 16px;font-size:14px;line-height:1.35;
   box-shadow:0 6px 24px rgba(0,0,0,.25)}
 
+.locate{position:fixed;right:12px;bottom:calc(var(--dock-h) + 38px);z-index:1000;width:48px;height:48px;border-radius:50%;
+  border:0;padding:0;background:var(--panel);color:var(--ink);display:grid;place-items:center;cursor:pointer;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.locate svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.locate[aria-busy="true"]{opacity:.5}
+
 .dock{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:var(--panel);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:24px 24px 0 0;
   padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 14px);display:grid;gap:12px;
@@ -97,6 +103,10 @@ button.chip.warn{background:var(--danger);color:#fff}
 </div>
 
 <div class="toast" id="toast" hidden role="alert"></div>
+
+<button class="locate" id="locate" aria-label="Zoom naar mijn locatie">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="8"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg>
+</button>
 
 <div class="dock" id="dock">
   <div class="sw" id="swatches" role="group" aria-label="Lijnkleur"></div>
@@ -189,6 +199,19 @@ function rebuild() { group.clearLayers(); segs.forEach(addLayer); }
 
 map.on('dragstart', () => { follow = false; $('#follow').hidden = false; });
 $('#follow').onclick = () => { follow = true; $('#follow').hidden = true; if (last) map.panTo(last); };
+
+$('#locate').onclick = () => {
+  follow = true; $('#follow').hidden = true;
+  if (me) { map.setView(me.getLatLng(), 18, { animate: true }); return; }
+  if (DEMO) { toast('Tik eerst op Start om de demo te beginnen.'); return; }
+  if (!navigator.geolocation) { toast('Deze browser kan je locatie niet bepalen.'); return; }
+  const b = $('#locate'); b.setAttribute('aria-busy', 'true');
+  navigator.geolocation.getCurrentPosition(pos => {
+    b.removeAttribute('aria-busy');
+    const cur = [r6(pos.coords.latitude), r6(pos.coords.longitude)];
+    showMe(cur); map.setView(cur, 18, { animate: true });
+  }, err => { b.removeAttribute('aria-busy'); onErr(err); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+};
 
 const dock = $('#dock');
 new ResizeObserver(() => {
