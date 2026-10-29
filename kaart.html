@@ -71,10 +71,13 @@ button{font-family:inherit;color:inherit}
 .gbtn{display:grid;gap:8px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:8px;cursor:pointer}
 .gbtn:active{transform:scale(.98)}
 .gbtn canvas{display:block;width:100%;aspect-ratio:1;border-radius:12px}
-.meta{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:0 3px 3px}
-.meta b{font:700 20px/1 var(--disp);letter-spacing:.01em;white-space:nowrap;font-variant-numeric:tabular-nums}
-.meta small{font:600 11px/1 var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
-.meta .by{font:600 13px/1.1 var(--disp);letter-spacing:.06em;color:var(--text);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:0 3px 3px;min-width:0}
+.meta .by{font:700 17px/1.1 var(--disp);letter-spacing:.03em;color:var(--text);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta .by.anon{color:var(--muted);font-weight:600}
+.meta small{font:600 12px/1 var(--disp);letter-spacing:.06em;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--muted);font:600 12px/1 var(--disp);letter-spacing:.12em;text-transform:uppercase;padding:7px 12px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:#fff}
 .gc.on .gbtn{border-color:var(--accent);background:var(--surface-2);box-shadow:0 0 0 1px var(--accent)}
 .rm{border:1px solid rgba(255,91,91,.55);border-radius:999px;background:transparent;color:#ff8f8f;font:600 12px/1 var(--disp);letter-spacing:.14em;text-transform:uppercase;padding:9px 8px;cursor:pointer}
 .rm.arm{background:var(--warn);border-color:var(--warn);color:#fff}
@@ -103,7 +106,6 @@ button{font-family:inherit;color:inherit}
   .dh,.dsub{display:block}
   .strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;overflow-y:auto;overflow-x:hidden;align-content:start;padding:8px 4px 16px}
   .gc{width:auto}
-  .meta{flex-direction:row;justify-content:space-between;align-items:baseline}
 }
 </style>
 </head>
@@ -128,7 +130,7 @@ button{font-family:inherit;color:inherit}
   <div class="lanes dl"><i style="--c:#f2492b"></i><i style="--c:#ff9a2e"></i><i style="--c:#ffd21f"></i><i style="--c:#1fcb6b"></i><i style="--c:#2d8cff"></i><i style="--c:#8e5cf7"></i></div>
   <h1 class="dh">Figurerunning</h1>
   <p class="dsub">All art on one map</p>
-  <div class="lab"><span>Drawings</span><b id="count">0</b></div>
+  <div class="lab"><span>Drawings <b id="count">0</b></span><div class="seg" role="group" aria-label="What to show on the map"><button type="button" id="mAll" aria-pressed="true">All</button><button type="button" id="mOne" aria-pressed="false">Only this</button></div></div>
   <div class="strip" id="strip" role="list"></div>
 </div>
 
@@ -146,10 +148,12 @@ const PUBS = 'figurerunning.pubs.v1';
 const COLORS = ['#f2492b','#ff9a2e','#ffd21f','#1fcb6b','#2d8cff','#8e5cf7','#ff5ba7','#111111'];
 const wide = () => window.innerWidth >= 900;
 
+let solo = false;
 let items = [], byId = {}, selId = null, lastLoad = 0, firstFit = true;
 
 /* ---------- helpers ---------- */
 const fmtKm = k => (+k).toFixed(k < 10 ? 2 : 1) + ' km';
+const fmtShort = iso => { const d = new Date(iso); if (isNaN(d)) return ''; const z = n => String(n).padStart(2, '0'); return z(d.getDate()) + '-' + z(d.getMonth() + 1) + '-' + z(d.getFullYear() % 100); };
 const fmtDate = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); };
 function own() { try { const v = JSON.parse(localStorage.getItem(PUBS) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
 function headers() { const h = { apikey: CFG.key }; if (CFG.key.startsWith('eyJ')) h.Authorization = 'Bearer ' + CFG.key; return h; }
@@ -184,7 +188,7 @@ function syncPins() {
   if (!on && map.hasLayer(pins)) map.removeLayer(pins);
 }
 map.on('zoomend', syncPins);
-map.on('click', () => select(null));
+map.on('click', () => { if (!solo) select(null); });
 
 const dock = $('#dock');
 new ResizeObserver(() => {
@@ -239,10 +243,9 @@ function addItem(d) {
   btn.setAttribute('aria-label', 'Drawing' + (d.artist ? ' by ' + d.artist : '') + ' of ' + fmtKm(d.km) + ' on ' + fmtDate(d.created_at));
   const cv = document.createElement('canvas'); cv.width = cv.height = 360; thumb(cv, d.segs);
   const meta = document.createElement('span'); meta.className = 'meta';
-  const km = document.createElement('b'); km.textContent = fmtKm(d.km);
-  const dt = document.createElement('small'); dt.textContent = fmtDate(d.created_at);
-  meta.append(km, dt);
-  if (d.artist) { const by = document.createElement('span'); by.className = 'by'; by.textContent = d.artist; meta.append(by); }
+  const by = document.createElement('span'); by.className = 'by' + (d.artist ? '' : ' anon'); by.textContent = d.artist || 'Anonymous';
+  const dt = document.createElement('small'); dt.textContent = fmtShort(d.created_at) + ' · ' + fmtKm(d.km);
+  meta.append(by, dt);
   btn.append(cv, meta); btn.onclick = () => select(d.id, 'card'); card.append(btn);
   const mine = own().find(p => p.id === d.id);
   if (mine) {
@@ -268,10 +271,29 @@ function clearAll() {
   casings.clearLayers(); colors.clearLayers(); pins.clearLayers(); hlGroup.clearLayers();
   $('#strip').replaceChildren(); items = []; byId = {};
 }
+function applyMode() {                            // 'All' shows everything, 'Only this' just the selected drawing
+  const on = solo && !!byId[selId];
+  for (const d of items) {
+    const show = !on || d.id === selId;
+    d.layers.forEach((l, i) => { const g = i % 2 ? colors : casings; if (show && !g.hasLayer(l)) g.addLayer(l); if (!show && g.hasLayer(l)) g.removeLayer(l); });
+    if (show && !pins.hasLayer(d.pin)) pins.addLayer(d.pin);
+    if (!show && pins.hasLayer(d.pin)) pins.removeLayer(d.pin);
+  }
+  $('#mAll').setAttribute('aria-pressed', String(!on)); $('#mOne').setAttribute('aria-pressed', String(on));
+}
+function setSolo(v) {
+  solo = v;
+  if (v && !byId[selId] && items.length) { select(items[0].id, 'card'); return; }
+  applyMode();
+  if (!v) fitAll();
+}
+$('#mAll').onclick = () => setSolo(false);
+$('#mOne').onclick = () => setSolo(true);
 function select(id, from) {
   hlGroup.clearLayers();
   document.querySelectorAll('.gc.on').forEach(el => el.classList.remove('on'));
   const d = id && byId[id]; selId = d ? id : null;
+  applyMode();
   if (!d) return;
   for (const s of d.segs) {
     const l = L.polyline(s.p, { renderer, color: '#ffbfa8', weight: 22, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(hlGroup);
@@ -290,7 +312,7 @@ function fitAll() {                               // overview of every drawing
   items.forEach(d => all.extend(d.bounds));
   map.fitBounds(all, { paddingTopLeft: [30, 90], paddingBottomRight: [30, padBottom()], maxZoom: 17 });
 }
-$('#brand').onclick = () => { select(null); fitAll(); };
+$('#brand').onclick = () => { solo = false; select(null); fitAll(); };
 
 /* ---------- loading ---------- */
 function demoData() {
@@ -341,8 +363,8 @@ async function load(quiet) {
   $('#demoChip').hidden = !DEMO;
   dock.hidden = !items.length;
   const total = items.reduce((a, d) => a + (+d.km || 0), 0);
-  $('#count').textContent = items.length + (items.length >= LIMIT ? '+' : '') + ' · ' + fmtKm(total);
-  syncPins();
+  $('#count').textContent = items.length + (items.length >= LIMIT ? '+' : '');
+  syncPins(); applyMode();
   if (!items.length) {
     showMsg('No drawings yet', 'Make one in the app, tap Share and choose Put on the map.', [{ label: 'Open the app', href: './' }]);
     return;
