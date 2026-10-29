@@ -50,7 +50,10 @@ button{font-family:inherit;color:inherit}
 .chip{display:inline-flex;align-items:center;gap:9px;background:rgba(8,17,31,.84);color:var(--text);border:1px solid var(--line);border-radius:999px;
   padding:10px 15px;font:600 13px/1 var(--disp);letter-spacing:.1em;text-transform:uppercase;font-variant-numeric:tabular-nums;
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 6px 18px rgba(0,0,0,.28)}
-button.chip{cursor:pointer}
+button.chip,a.chip{cursor:pointer}
+.chip svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none;margin:-1px 0}
+@media(max-width:380px){#tomap span{display:none}#tomap{padding:10px 12px}}
+
 button.chip:active,.locate:active,.tile:active,.big:active,.start:active{transform:scale(.97)}
 button.chip.warn{background:var(--warn);border-color:var(--warn);color:#fff}
 .sdot{width:9px;height:9px;border-radius:50%;background:#6b7a90;flex:none}
@@ -73,14 +76,6 @@ button.chip.warn{background:var(--warn);border-color:var(--warn);color:#fff}
 .intro h1{margin:0;font:italic 800 clamp(38px,12.5vw,52px)/.92 var(--disp);text-transform:uppercase;text-wrap:balance}
 .steps{display:grid;grid-template-columns:1fr 1fr;gap:12px 18px;padding-top:2px}
 .step{padding:1px 0 1px 12px;border-left:3px solid var(--p);font:600 18px/1.1 var(--disp);letter-spacing:.08em;text-transform:uppercase;color:var(--text)}
-.tomap{pointer-events:auto;display:flex;align-items:center;gap:12px;margin:4px -18px -20px;padding:14px 18px;border-top:1px solid var(--line);
-  background:rgba(255,255,255,.04);color:var(--text);text-decoration:none;font:700 16px/1.1 var(--disp);letter-spacing:.1em;text-transform:uppercase}
-.tomap:active{background:rgba(255,255,255,.1)}
-.tomap .pin{width:26px;height:26px;flex:none;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.tomap span{flex:1}
-.tomap .dots{display:flex;gap:4px}
-.tomap .dots i{width:8px;height:8px;border-radius:50%;background:var(--c)}
-.tomap .go{width:18px;height:18px;flex:none;fill:none;stroke:var(--text);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 
 .locate{position:fixed;right:12px;bottom:calc(var(--dock-h) + 40px);z-index:1000;width:52px;height:52px;border-radius:50%;
   border:1px solid var(--line);padding:0;background:rgba(8,17,31,.9);display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.3)}
@@ -148,6 +143,7 @@ a.link{display:block;text-align:center}
   <div class="chip" id="status" role="status" data-state="idle"><i class="sdot"></i><span id="statusText">Klaar om te starten</span></div>
   <div class="top-r">
     <button class="chip" id="follow" hidden>Volg mij</button>
+    <a class="chip" id="tomap" href="kaart.html" aria-label="Kaart met alle tekeningen"><svg viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg><span>Kaart</span></a>
     <button class="chip" id="reset">Nieuw</button>
   </div>
 </div>
@@ -163,12 +159,6 @@ a.link{display:block;text-align:center}
       <span class="step" style="--p:#ff5ba7">Gum</span>
       <span class="step" style="--p:#2d8cff">Deel</span>
     </div>
-    <a class="tomap" href="kaart.html">
-      <svg class="pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>
-      <span>Alle tekeningen</span>
-      <b class="dots"><i style="--c:#f2492b"></i><i style="--c:#ffd21f"></i><i style="--c:#1fcb6b"></i><i style="--c:#2d8cff"></i></b>
-      <svg class="go" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-    </a>
   </div>
 </div>
 
@@ -336,6 +326,7 @@ function erase(centers) {
 
 /* ---------- GPS ---------- */
 function setStatus() {
+  $('#tomap').hidden = tracking;
   const chip = $('#status'), el = $('#statusText');
   $('#intro').hidden = tracking || segs.length > 0;
   if (!tracking && !segs.length) { chip.dataset.state = 'idle'; el.textContent = 'Klaar om te starten'; return; }
