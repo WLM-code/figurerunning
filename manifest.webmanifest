@@ -1,8 +1,8 @@
 {
   "name": "Figurerunning",
   "short_name": "Figurerunning",
-  "description": "Teken met je voeten: je route wordt een lijn op de kaart.",
-  "lang": "nl",
+  "description": "Draw with your feet: your route becomes a line on the map.",
+  "lang": "en",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
