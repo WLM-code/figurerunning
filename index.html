@@ -71,10 +71,8 @@ button.chip.warn{background:var(--warn);border-color:var(--warn);color:#fff}
 .intro .in{padding:18px 18px 20px;display:grid;gap:12px}
 .eyebrow{font:600 12px/1 var(--disp);letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
 .intro h1{margin:0;font:italic 800 clamp(38px,12.5vw,52px)/.92 var(--disp);text-transform:uppercase;text-wrap:balance}
-.steps{display:flex;flex-wrap:wrap;gap:8px}
-.step{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:8px 13px 8px 10px;
-  font:600 14px/1 var(--disp);letter-spacing:.1em;text-transform:uppercase}
-.step::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--p)}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:12px 18px;padding-top:2px}
+.step{padding:1px 0 1px 12px;border-left:3px solid var(--p);font:600 18px/1.1 var(--disp);letter-spacing:.08em;text-transform:uppercase;color:var(--text)}
 
 .locate{position:fixed;right:12px;bottom:calc(var(--dock-h) + 40px);z-index:1000;width:52px;height:52px;border-radius:50%;
   border:1px solid var(--line);padding:0;background:rgba(8,17,31,.9);display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.3)}
@@ -153,7 +151,7 @@ a.link{display:block;text-align:center}
     <h1>Teken met<br>je voeten</h1>
     <div class="steps">
       <span class="step" style="--p:#1fcb6b">Loop</span>
-      <span class="step" style="--p:#ffd21f">Wissel van kleur</span>
+      <span class="step" style="--p:#ffd21f">Wissel kleur</span>
       <span class="step" style="--p:#ff5ba7">Gum</span>
       <span class="step" style="--p:#2d8cff">Deel</span>
     </div>
