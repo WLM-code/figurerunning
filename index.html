@@ -50,7 +50,7 @@ button{font-family:inherit;color:inherit}
 .chip{display:inline-flex;align-items:center;gap:9px;background:rgba(8,17,31,.84);color:var(--text);border:1px solid var(--line);border-radius:999px;
   padding:10px 15px;font:600 13px/1 var(--disp);letter-spacing:.1em;text-transform:uppercase;font-variant-numeric:tabular-nums;
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 6px 18px rgba(0,0,0,.28)}
-button.chip,a.chip{cursor:pointer}
+button.chip,a.chip{cursor:pointer}a.chip{text-decoration:none}
 .chip svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none;margin:-1px 0}
 @media(max-width:380px){#tomap span{display:none}#tomap{padding:10px 12px}}
 
@@ -98,6 +98,9 @@ button.chip.warn{background:var(--warn);border-color:var(--warn);color:#fff}
   text-transform:uppercase;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;box-shadow:0 10px 26px rgba(255,91,46,.3)}
 .start i{width:16px;height:16px;border-radius:50%;background:var(--cur,#f2492b);box-shadow:0 0 0 3px rgba(255,255,255,.92);flex:none}
 .start svg{width:18px;height:18px;fill:currentColor}
+.start.stop{min-height:52px;background:var(--surface);border:1px solid var(--line);box-shadow:none;font-size:22px}
+.start.stop i{display:none}
+.start.stop svg{color:var(--accent)}
 .row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .tile{display:grid;align-content:space-between;justify-items:start;gap:2px;min-height:88px;padding:12px;text-align:left;
   background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:18px;cursor:pointer}
@@ -337,6 +340,7 @@ function setStatus() {
     else if (lastAcc > MAX_ACC) { parts.push('Zwak ±' + Math.round(lastAcc) + ' m'); state = 'weak'; }
     else { parts.push('GPS ±' + Math.round(lastAcc) + ' m'); state = 'ok'; }
   }
+  if (!tracking) parts.push('Gestopt');
   parts.push(fmt(total()));
   chip.dataset.state = state;
   el.textContent = parts.join(' · ');
@@ -403,10 +407,24 @@ function startDemo() {
     onFix({ coords: { latitude: lat, longitude: lng, accuracy: 8 }, timestamp: Date.now() });
   }, 400);
 }
+function setRunBtn() {
+  const b = $('#start');
+  b.classList.toggle('stop', tracking);
+  $('#startLabel').textContent = tracking ? 'Stop' : (segs.length ? 'Verder tekenen' : 'Start tekenen');
+  b.querySelector('svg path').setAttribute('d', tracking ? 'M6.5 6.5h11v11h-11z' : 'M7 4.5v15l13-7.5z');
+}
+function stopTracking() {
+  tracking = false; last = null; curSeg = null; lastAcc = null;
+  if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+  if (wake) { try { wake.release(); } catch (e) {} wake = null; }
+  setRunBtn(); setStatus();
+}
 function startTracking() {
   if (!DEMO && !navigator.geolocation) { toast('Deze browser kan je locatie niet bepalen.'); return; }
   tracking = true; last = null; curSeg = null; lastAcc = null;
-  $('#start').hidden = true; $('#hint').hidden = true; $('#row').hidden = false;
+  $('#hint').hidden = true; $('#row').hidden = false;
+  setRunBtn();
   setStatus();
   lockScreen();
   if (DEMO) startDemo();
@@ -454,7 +472,7 @@ sw.addEventListener('click', e => {
   if (b) setColor(b.dataset.c);
 });
 $('#cc').addEventListener('input', e => setColor(e.target.value));
-$('#start').onclick = startTracking;
+$('#start').onclick = () => (tracking ? stopTracking() : startTracking());
 $('#pen').onclick = () => { penDown = !penDown; curSeg = null; updateMode(); };
 $('#gum').onclick = () => setEraser(!eraser);
 
@@ -467,7 +485,7 @@ $('#reset').onclick = () => {
     return;
   }
   resetArmed = false; b.textContent = 'Nieuw'; b.classList.remove('warn');
-  segs = []; curSeg = null; rebuild(); save(); setStatus(); unlinkPub();
+  segs = []; curSeg = null; rebuild(); save(); setRunBtn(); setStatus(); unlinkPub();
 };
 
 /* ---------- delen als plaatje ---------- */
@@ -766,6 +784,7 @@ if (segs.length) {
   const all = segs.flatMap(s => s.p);
   map.fitBounds(L.latLngBounds(all), { padding: [40, 40] });
   $('#startLabel').textContent = 'Verder tekenen';
+  $('#hint').hidden = true; $('#row').hidden = false;
 }
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
