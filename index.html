@@ -132,6 +132,12 @@ button.chip.warn{background:var(--warn);border-color:var(--warn);color:#fff}
 .big.accent{background:var(--accent);border-color:var(--accent);color:#fff}
 .big:disabled{opacity:.4}
 .pub{display:grid;gap:8px;padding-top:4px}
+.field{display:grid;gap:6px}
+.field span{font:600 12px/1 var(--disp);letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.field input{width:100%;min-height:50px;padding:0 14px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--text);
+  font:500 16px/1.2 var(--ui);-webkit-user-select:text;user-select:text}
+.field input::placeholder{color:#6d7e96}
+.field input:focus{outline:2px solid #5aa9ff;outline-offset:2px}
 #pubMsg{margin:0;font:500 13px/1.4 var(--ui);color:var(--muted);text-align:center}
 .link{border:0;background:none;font:600 13px/1 var(--disp);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:10px;cursor:pointer;
   text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}
@@ -207,6 +213,8 @@ a.link{display:block;text-align:center}
         </button>
       </div>
       <div class="pub" id="pub" hidden>
+        <label class="field" for="artist"><span>Artist name (optional)</span>
+          <input id="artist" type="text" maxlength="40" autocomplete="nickname" autocapitalize="words" spellcheck="false" placeholder="Shown with your drawing on the map"></label>
         <button class="big accent" id="doPub">
           <svg viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>
           <span id="pubLabel">Put on the map</span>
@@ -705,6 +713,10 @@ let pubs = [];   // [{id, secret, at, sig, cur}] the secret stays on this device
 try { const v = JSON.parse(localStorage.getItem(PUBS) || '[]'); if (Array.isArray(v)) pubs = v; } catch (e) {}
 const savePubs = () => { try { localStorage.setItem(PUBS, JSON.stringify(pubs)); } catch (e) {} };
 const curPub = () => pubs.find(p => p.cur) || null;
+const ARTIST = 'figurerunning.artist';
+const cleanName = s => String(s || '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+const artistName = () => cleanName($('#artist').value);
+try { $('#artist').value = localStorage.getItem(ARTIST) || ''; } catch (e) {}
 function unlinkPub() { pubs.forEach(p => { p.cur = false; }); savePubs(); }
 function sig() { let n = 0; for (const s of segs) n += s.p.length; return n + ':' + Math.round(total()); }
 function simplify(pts, tol) {                       // Douglas-Peucker, tolerance in metres
@@ -745,7 +757,7 @@ async function rpc(name, body) {
   if (!r.ok) {
     let m = ''; try { m = (await r.json()).message || ''; } catch (e) {}
     if (r.status === 401 || r.status === 403) throw new Error('the key in config.js is not correct');
-    if (r.status === 404) throw new Error('the database has not been set up yet (see supabase.sql)');
+    if (r.status === 404) throw new Error('the database has not been set up or updated yet (run supabase.sql again)');
     throw new Error(r.status === 400 && m ? m : 'the database is not responding properly');
   }
   return r.json();
@@ -755,8 +767,9 @@ function updatePub() {
   $('#pub').hidden = !CAN_PUB;
   if (!CAN_PUB) return;
   const c = curPub(), l = $('#pubLabel');
-  if (!c) { l.textContent = 'Put on the map'; pubMsg('Everyone will only see your line, without a name. You can always remove it again.'); }
-  else if (c.sig === sig()) { l.textContent = 'Remove from the map'; pubMsg('Your drawing is on the map.'); }
+  if (!c) { l.textContent = 'Put on the map'; pubMsg(artistName() ? 'Everyone will see your line and your artist name. You can always remove it again.' : 'Everyone will only see your line, without a name. You can always remove it again.'); }
+  else if (c.sig === sig() && (c.artist || '') === artistName()) { l.textContent = 'Remove from the map'; pubMsg('Your drawing is on the map.'); }
+  else if (c.sig === sig()) { l.textContent = 'Update the map'; pubMsg('Your artist name has changed since you put it on the map.'); }
   else { l.textContent = 'Update the map'; pubMsg('Your drawing has changed since you put it on the map.'); }
 }
 $('#doPub').onclick = async () => {
@@ -767,16 +780,20 @@ $('#doPub').onclick = async () => {
       await rpc('unpublish_drawing', { p_id: c.id, p_secret: c.secret });
       pubs = pubs.filter(q => q !== c); savePubs();
     }
-    if (!c || c.sig !== sig()) {
+    if (!c || c.sig !== sig() || (c.artist || '') !== artistName()) {
       const out = exportSegs();
       if (!out.length) throw new Error('nothing has been drawn yet');
       const secret = randomSecret();
-      const id = await rpc('publish_drawing', { p_segs: out, p_secret: secret });
-      pubs.push({ id, secret, at: Date.now(), sig: sig(), cur: true }); savePubs();
+      const name = artistName();
+      const id = await rpc('publish_drawing', name ? { p_segs: out, p_secret: secret, p_artist: name } : { p_segs: out, p_secret: secret });
+      pubs.push({ id, secret, at: Date.now(), sig: sig(), artist: name, cur: true }); savePubs();
+      try { localStorage.setItem(ARTIST, name); } catch (e) {}
     }
   } catch (e) { pubMsg('That did not work: ' + e.message + '.'); b.disabled = false; return; }
   b.disabled = false; updatePub();
 };
+
+$('#artist').addEventListener('input', updatePub);
 
 /* ---------- startup ---------- */
 load(); rebuild(); paintSwatches(); updateMode(); setStatus();

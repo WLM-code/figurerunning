@@ -53,8 +53,7 @@ button{font-family:inherit;color:inherit}
 .chip svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none;margin:-1px 0}
 @media(max-width:380px){#toapp span{display:none}#toapp{padding:10px 12px}}
 
-.chip.brand{font:italic 800 16px/1 var(--disp);letter-spacing:.06em;cursor:default}
-.chip.brand:active{transform:none}
+.chip.brand{font:italic 800 16px/1 var(--disp);letter-spacing:.06em;cursor:pointer}
 .chip.demo{border-color:var(--accent);color:var(--accent);cursor:default}
 
 .dock{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:var(--panel);border-top:1px solid var(--line);
@@ -75,6 +74,7 @@ button{font-family:inherit;color:inherit}
 .meta{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:0 3px 3px}
 .meta b{font:700 20px/1 var(--disp);letter-spacing:.01em;white-space:nowrap;font-variant-numeric:tabular-nums}
 .meta small{font:600 11px/1 var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.meta .by{font:600 13px/1.1 var(--disp);letter-spacing:.06em;color:var(--text);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gc.on .gbtn{border-color:var(--accent);background:var(--surface-2);box-shadow:0 0 0 1px var(--accent)}
 .rm{border:1px solid rgba(255,91,91,.55);border-radius:999px;background:transparent;color:#ff8f8f;font:600 12px/1 var(--disp);letter-spacing:.14em;text-transform:uppercase;padding:9px 8px;cursor:pointer}
 .rm.arm{background:var(--warn);border-color:var(--warn);color:#fff}
@@ -111,7 +111,7 @@ button{font-family:inherit;color:inherit}
 <div id="map"></div>
 
 <div class="top">
-  <div class="top-l"><span class="chip brand">Figurerunning</span><span class="chip demo" id="demoChip" hidden>Demo</span></div>
+  <div class="top-l"><button class="chip brand" id="brand" type="button" aria-label="Show all drawings">Figurerunning</button><span class="chip demo" id="demoChip" hidden>Demo</span></div>
   <div class="top-r"><a class="chip" id="toapp" href="./" aria-label="Back to drawing"><svg viewBox="0 0 24 24"><path d="M4 20l1-5L16.5 3.5a2.1 2.1 0 0 1 3 3L8 18z"/><path d="M14.5 5.5l3 3"/></svg><span>Draw</span></a></div>
 </div>
 
@@ -236,12 +236,14 @@ function addItem(d) {
 
   const card = document.createElement('div'); card.className = 'gc'; card.setAttribute('role', 'listitem');
   const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'gbtn';
-  btn.setAttribute('aria-label', 'Drawing of ' + fmtKm(d.km) + ' on ' + fmtDate(d.created_at));
+  btn.setAttribute('aria-label', 'Drawing' + (d.artist ? ' by ' + d.artist : '') + ' of ' + fmtKm(d.km) + ' on ' + fmtDate(d.created_at));
   const cv = document.createElement('canvas'); cv.width = cv.height = 360; thumb(cv, d.segs);
   const meta = document.createElement('span'); meta.className = 'meta';
   const km = document.createElement('b'); km.textContent = fmtKm(d.km);
   const dt = document.createElement('small'); dt.textContent = fmtDate(d.created_at);
-  meta.append(km, dt); btn.append(cv, meta); btn.onclick = () => select(d.id, 'card'); card.append(btn);
+  meta.append(km, dt);
+  if (d.artist) { const by = document.createElement('span'); by.className = 'by'; by.textContent = d.artist; meta.append(by); }
+  btn.append(cv, meta); btn.onclick = () => select(d.id, 'card'); card.append(btn);
   const mine = own().find(p => p.id === d.id);
   if (mine) {
     const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = 'Remove'; rm.setAttribute('aria-label', 'Remove your drawing from the map');
@@ -282,6 +284,14 @@ function select(id, from) {
   }
 }
 
+function fitAll() {                               // overview of every drawing
+  if (!items.length) return;
+  const all = L.latLngBounds([]);                 // a fresh box, so no drawing's own bounds get stretched
+  items.forEach(d => all.extend(d.bounds));
+  map.fitBounds(all, { paddingTopLeft: [30, 90], paddingBottomRight: [30, padBottom()], maxZoom: 17 });
+}
+$('#brand').onclick = () => { select(null); fitAll(); };
+
 /* ---------- loading ---------- */
 function demoData() {
   const spots = [[52.3676, 4.9041], [52.0907, 5.1214], [51.9244, 4.4777], [52.0705, 4.3007], [51.4416, 5.4697], [53.2194, 6.5665],
@@ -304,7 +314,10 @@ function demoData() {
   });
 }
 async function fetchDrawings() {
-  const r = await fetch(CFG.url.replace(/\/$/, '') + '/rest/v1/drawings?select=id,created_at,segs,km,lat,lng&order=created_at.desc&limit=' + LIMIT, { headers: headers() });
+  const base = CFG.url.replace(/\/$/, '') + '/rest/v1/drawings?select=';
+  const tail = '&order=created_at.desc&limit=' + LIMIT;
+  let r = await fetch(base + 'id,created_at,segs,km,lat,lng,artist' + tail, { headers: headers() });
+  if (r.status === 400) r = await fetch(base + 'id,created_at,segs,km,lat,lng' + tail, { headers: headers() });   // database not updated yet: no artist column
   if (!r.ok) throw new Error('error ' + r.status);
   return r.json();
 }
@@ -338,8 +351,7 @@ async function load(quiet) {
   if (selId && byId[selId]) select(selId, 'quiet');
   else if (firstFit) {
     firstFit = false;
-    const all = items.map(d => d.bounds).reduce((a, b) => a.extend(b));
-    map.fitBounds(all, { paddingTopLeft: [30, 90], paddingBottomRight: [30, padBottom()], maxZoom: 17 });
+    fitAll();
   }
 }
 document.addEventListener('visibilitychange', () => {
